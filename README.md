@@ -1,4 +1,5 @@
-# ORB-Strategy
+# IntraTrade
+
 This is Web Application built using MERN which automates ORB trading strategy.
 
 
