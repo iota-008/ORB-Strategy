@@ -40,13 +40,18 @@ jobs:
             set -euo pipefail
             echo "Starting ORB Strategy deployment..."
 
-            if [ -z "${{ env.VM_USER }}" ] || [ -z "${{ env.DEPLOY_PATH }}" ]; then
+            VM_USER_CLEAN="$(echo "${{ env.VM_USER }}" | tr -d '\r' | xargs)"
+            DEPLOY_PATH_CLEAN="$(echo "${{ env.DEPLOY_PATH }}" | tr -d '\r' | xargs)"
+            COMPOSE_FILE_CONFIGURED="$(echo "${{ env.COMPOSE_FILE }}" | tr -d '\r' | xargs)"
+            ENV_FILE_CONFIGURED="$(echo "${{ env.ENV_FILE }}" | tr -d '\r' | xargs)"
+
+            if [ -z "$VM_USER_CLEAN" ] || [ -z "$DEPLOY_PATH_CLEAN" ]; then
               echo "Missing required repository variables. Set VM_USER and DEPLOY_PATH."
               exit 1
             fi
 
-            STACK_NAME="$(basename "${{ env.DEPLOY_PATH }}")"
-            STACK_DIR="/home/${{ env.VM_USER }}/stacks/$STACK_NAME"
+            STACK_NAME="$(basename "$DEPLOY_PATH_CLEAN")"
+            STACK_DIR="/home/$VM_USER_CLEAN/stacks/$STACK_NAME"
 
             RESOLVED_STACK_COMPOSE=""
             if [ -f "$STACK_DIR/docker-compose.yml" ]; then
@@ -56,13 +61,13 @@ jobs:
             fi
 
             RESOLVED_DEPLOY_COMPOSE=""
-            if [ -f "${{ env.DEPLOY_PATH }}/docker-compose.yml" ]; then
-              RESOLVED_DEPLOY_COMPOSE="${{ env.DEPLOY_PATH }}/docker-compose.yml"
-            elif [ -f "${{ env.DEPLOY_PATH }}/docker-compose.prod.yml" ]; then
-              RESOLVED_DEPLOY_COMPOSE="${{ env.DEPLOY_PATH }}/docker-compose.prod.yml"
+            if [ -f "$DEPLOY_PATH_CLEAN/docker-compose.yml" ]; then
+              RESOLVED_DEPLOY_COMPOSE="$DEPLOY_PATH_CLEAN/docker-compose.yml"
+            elif [ -f "$DEPLOY_PATH_CLEAN/docker-compose.prod.yml" ]; then
+              RESOLVED_DEPLOY_COMPOSE="$DEPLOY_PATH_CLEAN/docker-compose.prod.yml"
             fi
 
-            COMPOSE_FILE_PATH="$(echo "${{ env.COMPOSE_FILE }}" | xargs)"
+            COMPOSE_FILE_PATH="$COMPOSE_FILE_CONFIGURED"
             echo "Configured COMPOSE_FILE: ${COMPOSE_FILE_PATH:-<empty>}"
             if [ -n "$COMPOSE_FILE_PATH" ] && [ ! -f "$COMPOSE_FILE_PATH" ]; then
               echo "Configured COMPOSE_FILE not found: $COMPOSE_FILE_PATH"
@@ -77,7 +82,7 @@ jobs:
               COMPOSE_FILE_PATH="$RESOLVED_DEPLOY_COMPOSE"
             fi
 
-            ENV_FILE_PATH="$(echo "${{ env.ENV_FILE }}" | xargs)"
+            ENV_FILE_PATH="$ENV_FILE_CONFIGURED"
             echo "Configured ENV_FILE: ${ENV_FILE_PATH:-<empty>}"
             if [ -n "$ENV_FILE_PATH" ] && [ ! -f "$ENV_FILE_PATH" ]; then
               echo "Configured ENV_FILE not found: $ENV_FILE_PATH"
@@ -88,8 +93,8 @@ jobs:
             if [ -z "$ENV_FILE_PATH" ] && [ -f "$STACK_DIR/.env.production" ]; then
               ENV_FILE_PATH="$STACK_DIR/.env.production"
             fi
-            if [ -z "$ENV_FILE_PATH" ] && [ -f "${{ env.DEPLOY_PATH }}/.env.production" ]; then
-              ENV_FILE_PATH="${{ env.DEPLOY_PATH }}/.env.production"
+            if [ -z "$ENV_FILE_PATH" ] && [ -f "$DEPLOY_PATH_CLEAN/.env.production" ]; then
+              ENV_FILE_PATH="$DEPLOY_PATH_CLEAN/.env.production"
             fi
 
             if [ -d "$STACK_DIR" ]; then
@@ -101,14 +106,14 @@ jobs:
                 -exec rm -rf {} +
             fi
 
-            echo "Preparing deployment directory: ${{ env.DEPLOY_PATH }}"
-            sudo rm -rf "${{ env.DEPLOY_PATH }}"
-            sudo mkdir -p "${{ env.DEPLOY_PATH }}"
-            sudo chown -R "${{ env.VM_USER }}": "${{ env.DEPLOY_PATH }}"
+            echo "Preparing deployment directory: $DEPLOY_PATH_CLEAN"
+            sudo rm -rf "$DEPLOY_PATH_CLEAN"
+            sudo mkdir -p "$DEPLOY_PATH_CLEAN"
+            sudo chown -R "$VM_USER_CLEAN": "$DEPLOY_PATH_CLEAN"
 
             echo "Cloning latest repository into deployment path"
-            git clone "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" "${{ env.DEPLOY_PATH }}"
-            cd "${{ env.DEPLOY_PATH }}"
+            git clone "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" "$DEPLOY_PATH_CLEAN"
+            cd "$DEPLOY_PATH_CLEAN"
             git checkout "${{ github.ref_name }}"
 
             if [ -z "$COMPOSE_FILE_PATH" ]; then
@@ -116,18 +121,18 @@ jobs:
                 COMPOSE_FILE_PATH="$STACK_DIR/docker-compose.yml"
               elif [ -f "$STACK_DIR/docker-compose.prod.yml" ]; then
                 COMPOSE_FILE_PATH="$STACK_DIR/docker-compose.prod.yml"
-              elif [ -f "${{ env.DEPLOY_PATH }}/docker-compose.yml" ]; then
-                COMPOSE_FILE_PATH="${{ env.DEPLOY_PATH }}/docker-compose.yml"
-              elif [ -f "${{ env.DEPLOY_PATH }}/docker-compose.prod.yml" ]; then
-                COMPOSE_FILE_PATH="${{ env.DEPLOY_PATH }}/docker-compose.prod.yml"
+              elif [ -f "$DEPLOY_PATH_CLEAN/docker-compose.yml" ]; then
+                COMPOSE_FILE_PATH="$DEPLOY_PATH_CLEAN/docker-compose.yml"
+              elif [ -f "$DEPLOY_PATH_CLEAN/docker-compose.prod.yml" ]; then
+                COMPOSE_FILE_PATH="$DEPLOY_PATH_CLEAN/docker-compose.prod.yml"
               fi
             fi
 
             if [ -z "$ENV_FILE_PATH" ]; then
               if [ -f "$STACK_DIR/.env.production" ]; then
                 ENV_FILE_PATH="$STACK_DIR/.env.production"
-              elif [ -f "${{ env.DEPLOY_PATH }}/.env.production" ]; then
-                ENV_FILE_PATH="${{ env.DEPLOY_PATH }}/.env.production"
+              elif [ -f "$DEPLOY_PATH_CLEAN/.env.production" ]; then
+                ENV_FILE_PATH="$DEPLOY_PATH_CLEAN/.env.production"
               fi
             fi
 
@@ -145,7 +150,7 @@ jobs:
               exit 1
             fi
 
-            TARGET_ENV_IN_DEPLOY="${{ env.DEPLOY_PATH }}/.env.production"
+            TARGET_ENV_IN_DEPLOY="$DEPLOY_PATH_CLEAN/.env.production"
             if [ "$ENV_FILE_PATH" != "$TARGET_ENV_IN_DEPLOY" ]; then
               cp "$ENV_FILE_PATH" "$TARGET_ENV_IN_DEPLOY"
               ENV_FILE_PATH="$TARGET_ENV_IN_DEPLOY"
@@ -153,17 +158,17 @@ jobs:
             fi
 
             echo "Building and validating compose stack"
-            docker compose --project-directory "${{ env.DEPLOY_PATH }}" -f "$COMPOSE_FILE_PATH" --env-file "$ENV_FILE_PATH" pull --ignore-pull-failures
-            docker compose --project-directory "${{ env.DEPLOY_PATH }}" -f "$COMPOSE_FILE_PATH" --env-file "$ENV_FILE_PATH" build --pull --parallel
-            docker compose --project-directory "${{ env.DEPLOY_PATH }}" -f "$COMPOSE_FILE_PATH" --env-file "$ENV_FILE_PATH" config -q
+            docker compose --project-directory "$DEPLOY_PATH_CLEAN" -f "$COMPOSE_FILE_PATH" --env-file "$ENV_FILE_PATH" pull --ignore-pull-failures
+            docker compose --project-directory "$DEPLOY_PATH_CLEAN" -f "$COMPOSE_FILE_PATH" --env-file "$ENV_FILE_PATH" build --pull --parallel
+            docker compose --project-directory "$DEPLOY_PATH_CLEAN" -f "$COMPOSE_FILE_PATH" --env-file "$ENV_FILE_PATH" config -q
 
             echo "Starting services"
-            docker compose --project-directory "${{ env.DEPLOY_PATH }}" -f "$COMPOSE_FILE_PATH" --env-file "$ENV_FILE_PATH" up -d --remove-orphans
+            docker compose --project-directory "$DEPLOY_PATH_CLEAN" -f "$COMPOSE_FILE_PATH" --env-file "$ENV_FILE_PATH" up -d --remove-orphans
 
             echo "Container status"
-            docker compose --project-directory "${{ env.DEPLOY_PATH }}" -f "$COMPOSE_FILE_PATH" --env-file "$ENV_FILE_PATH" ps
+            docker compose --project-directory "$DEPLOY_PATH_CLEAN" -f "$COMPOSE_FILE_PATH" --env-file "$ENV_FILE_PATH" ps
 
             echo "Recent web logs"
-            docker compose --project-directory "${{ env.DEPLOY_PATH }}" -f "$COMPOSE_FILE_PATH" --env-file "$ENV_FILE_PATH" logs --tail=40 web || true
+            docker compose --project-directory "$DEPLOY_PATH_CLEAN" -f "$COMPOSE_FILE_PATH" --env-file "$ENV_FILE_PATH" logs --tail=40 web || true
 
             echo "Deployment complete"
