@@ -28,12 +28,15 @@ const FIELD_LABELS = {
 	changePct:      "Change %",
 	shortEMA:       "Short EMA",
 	longEMA:        "Long EMA",
+	consensus:      "Consensus",
+	confidence:     "Confidence",
+	algoVotes:      "Algorithm Votes",
 };
 
 function formatValue(key, value) {
 	if (value === null || value === undefined) return "—";
 	if (typeof value === "number") {
-		if (key.endsWith("Pct") || key.endsWith("pct")) return `${value.toFixed(2)}%`;
+		if (key.endsWith("Pct") || key.endsWith("pct") || key === "confidence") return `${value.toFixed(2)}%`;
 		return value.toLocaleString("en-IN", { maximumFractionDigits: 2 });
 	}
 	return String(value);
@@ -74,7 +77,7 @@ function Stocks({ stock }) {
 
 				<Grid container spacing={1.5}>
 					{displayFields.map((key) => (
-						<Grid item xs={6} key={key}>
+						<Grid item xs={key === "algoVotes" ? 12 : 6} key={key}>
 							<Typography variant='caption' color='text.secondary'>
 								{FIELD_LABELS[key] || key}
 							</Typography>

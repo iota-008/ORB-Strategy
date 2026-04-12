@@ -15,13 +15,15 @@ const orb      = require("./orb");
 const vwap     = require("./vwap");
 const momentum = require("./momentum");
 const ema      = require("./ema");
+const consensus = require("./consensus");
 
 /** @type {Record<string, import('./orb')>} */
 const ALGOS = {
-	[orb.name]:      orb,
-	[vwap.name]:     vwap,
-	[momentum.name]: momentum,
-	[ema.name]:      ema,
+	[consensus.name]: consensus,
+	[orb.name]:       orb,
+	[vwap.name]:      vwap,
+	[momentum.name]:  momentum,
+	[ema.name]:       ema,
 };
 
 const DEFAULT_ALGO = orb.name;
