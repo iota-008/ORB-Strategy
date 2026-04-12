@@ -51,15 +51,15 @@ jobs:
             RESOLVED_STACK_COMPOSE=""
             if [ -f "$STACK_DIR/docker-compose.yml" ]; then
               RESOLVED_STACK_COMPOSE="$STACK_DIR/docker-compose.yml"
-            elif [ -f "$STACK_DIR/docker-compose.yml" ]; then
-              RESOLVED_STACK_COMPOSE="$STACK_DIR/docker-compose.yml"
+            elif [ -f "$STACK_DIR/docker-compose.prod.yml" ]; then
+              RESOLVED_STACK_COMPOSE="$STACK_DIR/docker-compose.prod.yml"
             fi
 
             RESOLVED_DEPLOY_COMPOSE=""
             if [ -f "${{ env.DEPLOY_PATH }}/docker-compose.yml" ]; then
               RESOLVED_DEPLOY_COMPOSE="${{ env.DEPLOY_PATH }}/docker-compose.yml"
-            elif [ -f "${{ env.DEPLOY_PATH }}/docker-compose.yml" ]; then
-              RESOLVED_DEPLOY_COMPOSE="${{ env.DEPLOY_PATH }}/docker-compose.yml"
+            elif [ -f "${{ env.DEPLOY_PATH }}/docker-compose.prod.yml" ]; then
+              RESOLVED_DEPLOY_COMPOSE="${{ env.DEPLOY_PATH }}/docker-compose.prod.yml"
             fi
 
             COMPOSE_FILE_PATH="${{ env.COMPOSE_FILE }}"
@@ -90,7 +90,7 @@ jobs:
               echo "Cleaning stack directory to keep only compose/env files: $STACK_DIR"
               find "$STACK_DIR" -mindepth 1 -maxdepth 1 \
                 ! -name 'docker-compose.yml' \
-                ! -name 'docker-compose.yml' \
+                ! -name 'docker-compose.prod.yml' \
                 ! -name '.env.production' \
                 -exec rm -rf {} +
             fi
@@ -108,12 +108,12 @@ jobs:
             if [ -z "$COMPOSE_FILE_PATH" ]; then
               if [ -f "$STACK_DIR/docker-compose.yml" ]; then
                 COMPOSE_FILE_PATH="$STACK_DIR/docker-compose.yml"
-              elif [ -f "$STACK_DIR/docker-compose.yml" ]; then
-                COMPOSE_FILE_PATH="$STACK_DIR/docker-compose.yml"
+              elif [ -f "$STACK_DIR/docker-compose.prod.yml" ]; then
+                COMPOSE_FILE_PATH="$STACK_DIR/docker-compose.prod.yml"
               elif [ -f "${{ env.DEPLOY_PATH }}/docker-compose.yml" ]; then
                 COMPOSE_FILE_PATH="${{ env.DEPLOY_PATH }}/docker-compose.yml"
-              elif [ -f "${{ env.DEPLOY_PATH }}/docker-compose.yml" ]; then
-                COMPOSE_FILE_PATH="${{ env.DEPLOY_PATH }}/docker-compose.yml"
+              elif [ -f "${{ env.DEPLOY_PATH }}/docker-compose.prod.yml" ]; then
+                COMPOSE_FILE_PATH="${{ env.DEPLOY_PATH }}/docker-compose.prod.yml"
               fi
             fi
 
