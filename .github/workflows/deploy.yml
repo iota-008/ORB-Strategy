@@ -62,10 +62,13 @@ jobs:
               RESOLVED_DEPLOY_COMPOSE="${{ env.DEPLOY_PATH }}/docker-compose.prod.yml"
             fi
 
-            COMPOSE_FILE_PATH="${{ env.COMPOSE_FILE }}"
+            COMPOSE_FILE_PATH="$(echo "${{ env.COMPOSE_FILE }}" | xargs)"
+            echo "Configured COMPOSE_FILE: ${COMPOSE_FILE_PATH:-<empty>}"
             if [ -n "$COMPOSE_FILE_PATH" ] && [ ! -f "$COMPOSE_FILE_PATH" ]; then
               echo "Configured COMPOSE_FILE not found: $COMPOSE_FILE_PATH"
-              COMPOSE_FILE_PATH=""
+              echo "Stack directory contents:"
+              ls -la "$STACK_DIR" || true
+              exit 1
             fi
             if [ -z "$COMPOSE_FILE_PATH" ] && [ -n "$RESOLVED_STACK_COMPOSE" ]; then
               COMPOSE_FILE_PATH="$RESOLVED_STACK_COMPOSE"
@@ -74,10 +77,13 @@ jobs:
               COMPOSE_FILE_PATH="$RESOLVED_DEPLOY_COMPOSE"
             fi
 
-            ENV_FILE_PATH="${{ env.ENV_FILE }}"
+            ENV_FILE_PATH="$(echo "${{ env.ENV_FILE }}" | xargs)"
+            echo "Configured ENV_FILE: ${ENV_FILE_PATH:-<empty>}"
             if [ -n "$ENV_FILE_PATH" ] && [ ! -f "$ENV_FILE_PATH" ]; then
               echo "Configured ENV_FILE not found: $ENV_FILE_PATH"
-              ENV_FILE_PATH=""
+              echo "Stack directory contents:"
+              ls -la "$STACK_DIR" || true
+              exit 1
             fi
             if [ -z "$ENV_FILE_PATH" ] && [ -f "$STACK_DIR/.env.production" ]; then
               ENV_FILE_PATH="$STACK_DIR/.env.production"
