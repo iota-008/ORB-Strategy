@@ -1,80 +1,129 @@
 // @ts-nocheck
 import "./App.css";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import Home from "./components/home";
 import MarketClosedPage from "./components/MarketClosedPage";
+import { Box, Button, CssBaseline, ThemeProvider, createTheme } from "@mui/material";
+import axios from "axios";
+
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "http://localhost:8001";
+
+const theme = createTheme({
+	palette: {
+		mode: "dark",
+		primary: {
+			main: "#7c4dff",
+		},
+		secondary: {
+			main: "#03dac6",
+		},
+		background: {
+			default: "#0b0f17",
+			paper: "#121826",
+		},
+	},
+	shape: {
+		borderRadius: 14,
+	},
+	typography: {
+		fontFamily: '"Inter", "Roboto", "Segoe UI", sans-serif',
+	},
+	components: {
+		MuiCard: {
+			styleOverrides: {
+				root: {
+					backgroundImage: "none",
+				},
+			},
+		},
+	},
+});
 
 function App() {
 	const [loadClient, setLoadClient] = useState(true);
 	const [marketClosed, setMarketStatus] = useState(false);
-	const Holidays = [
-		"1/26/2021",
-		"3/11/2021",
-		"3/29/2021",
-		"4/2/2021",
-		"4/14/2021",
-		"4/21/2021",
-		"5/13/2021",
-		"7/21/2021",
-		"8/19/2021",
-		"10/9/2021",
-		"10/15/2021",
-		"11/4/2021",
-		"11/5/2021",
-		"11/19/2021",
-	];
-	const StartTime = "09:15:00";
-	const CloseTime = "15:30:00";
+	const startTime = "09:15:00";
+	const closeTime = "15:30:00";
 
-	const CheckMarketStatus = () => {
-		var currentDate = new Date().toLocaleDateString("en-GB", {
+	const checkMarketStatus = useCallback(async () => {
+		const now = new Date();
+		const currentTime = now.toLocaleTimeString("en-GB", {
 			hour12: false,
+			timeZone: "Asia/Kolkata",
 		});
-		var currentTime = new Date().toLocaleTimeString("en-GB", {
-			hour12: false,
+		const weekday = now.toLocaleDateString("en-US", {
+			weekday: "short",
+			timeZone: "Asia/Kolkata",
 		});
+		const isWeekend = weekday === "Sat" || weekday === "Sun";
+		const isClosed =
+			isWeekend ||
+			currentTime < startTime ||
+			currentTime > closeTime;
 
-		if (
-			Holidays.includes(currentDate) ||
-			currentTime < StartTime ||
-			currentTime > CloseTime
-		) {
-			<div className='alert alert-danger fade in alert-dismissible'>
-				Market Is Closed
-			</div>;
-			setMarketStatus(true);
-			setLoadClient(false);
-		} else {
-			<div className='alert alert-success fade in alert-dismissible'>
-				Market Is Open
-			</div>;
-			setLoadClient((prevState) => !prevState);
+		const accessToken = localStorage.getItem("accessToken") || "";
+
+		try {
+			const response = await axios.get(`${API_BASE_URL}/api/market/status`, {
+				params: accessToken ? { accessToken } : {},
+			});
+
+			const isOpenFromApi = Boolean(response.data?.open);
+			if (!isOpenFromApi) {
+				setMarketStatus(true);
+				setLoadClient(false);
+				return;
+			}
+		} catch (_err) {
+			if (isClosed) {
+				setMarketStatus(true);
+				setLoadClient(false);
+				return;
+			}
 		}
 
-		// console.log(marketClosed);
-		// console.log(loadClient);
-		// console.log(localStorage.getItem("accessToken") != null);
+		setMarketStatus((previousStatus) => {
+			if (previousStatus) {
+				setLoadClient(true);
+			}
+			return false;
+		});
+	}, [closeTime, startTime]);
+
+	const toggleConnection = () => {
+		if (!marketClosed) {
+			setLoadClient((prevState) => !prevState);
+		}
 	};
+
 	useEffect(() => {
-		CheckMarketStatus();
-	}, []);
+		checkMarketStatus();
+		const intervalId = setInterval(checkMarketStatus, 30000);
+
+		return () => {
+			clearInterval(intervalId);
+		};
+	}, [checkMarketStatus]);
+
 	return (
-		<>
-			{loadClient && !marketClosed ? (
-				<Home setLoadClient={setLoadClient} />
-			) : (
-				<MarketClosedPage marketStatus={marketClosed} />
-			)}
-			{!marketClosed ? (
-				<button
-					className='btn btn-lg btn-primary align-self-center mb-3  mt-3 mx-auto d-block'
-					onClick={CheckMarketStatus}
-				>
-					{loadClient ? "Disconnect" : "Connect"}
-				</button>
-			) : null}
-		</>
+		<ThemeProvider theme={theme}>
+			<CssBaseline />
+			<Box sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
+				{loadClient && !marketClosed ? (
+					<Home setLoadClient={setLoadClient} />
+				) : (
+					<MarketClosedPage marketStatus={marketClosed} />
+				)}
+				{!marketClosed ? (
+					<Box sx={{ display: "flex", justifyContent: "center", py: 2 }}>
+						<Button variant='outlined' color='primary' onClick={toggleConnection}>
+							{loadClient ? "Disconnect" : "Connect"}
+						</Button>
+					</Box>
+				) : null}
+			</Box>
+		</ThemeProvider>
 	);
 }
 

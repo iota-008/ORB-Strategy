@@ -1,0 +1,163 @@
+name: Deploy IntraTrade
+
+on:
+  push:
+    branches:
+      - master
+      - main
+  workflow_dispatch:
+
+env:
+  VM_USER: ${{ vars.VM_USER }}
+  DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+  COMPOSE_FILE: ${{ vars.COMPOSE_FILE }}
+  ENV_FILE: ${{ vars.ENV_FILE }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Add VM host key
+        env:
+          VM_HOST_KEY: ${{ secrets.VM_HOST_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          if [ -n "$VM_HOST_KEY" ]; then
+            echo "$VM_HOST_KEY" >> ~/.ssh/known_hosts
+          fi
+
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ env.VM_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          timeout: 1h
+          command_timeout: 1h
+          script: |
+            set -euo pipefail
+            echo "Starting ORB Strategy deployment..."
+
+            if [ -z "${{ env.VM_USER }}" ] || [ -z "${{ env.DEPLOY_PATH }}" ]; then
+              echo "Missing required repository variables. Set VM_USER and DEPLOY_PATH."
+              exit 1
+            fi
+
+            STACK_NAME="$(basename "${{ env.DEPLOY_PATH }}")"
+            STACK_DIR="/home/${{ env.VM_USER }}/stacks/$STACK_NAME"
+
+            RESOLVED_STACK_COMPOSE=""
+            if [ -f "$STACK_DIR/docker-compose.yml" ]; then
+              RESOLVED_STACK_COMPOSE="$STACK_DIR/docker-compose.yml"
+            elif [ -f "$STACK_DIR/docker-compose.yml" ]; then
+              RESOLVED_STACK_COMPOSE="$STACK_DIR/docker-compose.yml"
+            fi
+
+            RESOLVED_DEPLOY_COMPOSE=""
+            if [ -f "${{ env.DEPLOY_PATH }}/docker-compose.yml" ]; then
+              RESOLVED_DEPLOY_COMPOSE="${{ env.DEPLOY_PATH }}/docker-compose.yml"
+            elif [ -f "${{ env.DEPLOY_PATH }}/docker-compose.yml" ]; then
+              RESOLVED_DEPLOY_COMPOSE="${{ env.DEPLOY_PATH }}/docker-compose.yml"
+            fi
+
+            COMPOSE_FILE_PATH="${{ env.COMPOSE_FILE }}"
+            if [ -n "$COMPOSE_FILE_PATH" ] && [ ! -f "$COMPOSE_FILE_PATH" ]; then
+              echo "Configured COMPOSE_FILE not found: $COMPOSE_FILE_PATH"
+              COMPOSE_FILE_PATH=""
+            fi
+            if [ -z "$COMPOSE_FILE_PATH" ] && [ -n "$RESOLVED_STACK_COMPOSE" ]; then
+              COMPOSE_FILE_PATH="$RESOLVED_STACK_COMPOSE"
+            fi
+            if [ -z "$COMPOSE_FILE_PATH" ] && [ -n "$RESOLVED_DEPLOY_COMPOSE" ]; then
+              COMPOSE_FILE_PATH="$RESOLVED_DEPLOY_COMPOSE"
+            fi
+
+            ENV_FILE_PATH="${{ env.ENV_FILE }}"
+            if [ -n "$ENV_FILE_PATH" ] && [ ! -f "$ENV_FILE_PATH" ]; then
+              echo "Configured ENV_FILE not found: $ENV_FILE_PATH"
+              ENV_FILE_PATH=""
+            fi
+            if [ -z "$ENV_FILE_PATH" ] && [ -f "$STACK_DIR/.env.production" ]; then
+              ENV_FILE_PATH="$STACK_DIR/.env.production"
+            fi
+            if [ -z "$ENV_FILE_PATH" ] && [ -f "${{ env.DEPLOY_PATH }}/.env.production" ]; then
+              ENV_FILE_PATH="${{ env.DEPLOY_PATH }}/.env.production"
+            fi
+
+            if [ -d "$STACK_DIR" ]; then
+              echo "Cleaning stack directory to keep only compose/env files: $STACK_DIR"
+              find "$STACK_DIR" -mindepth 1 -maxdepth 1 \
+                ! -name 'docker-compose.yml' \
+                ! -name 'docker-compose.yml' \
+                ! -name '.env.production' \
+                -exec rm -rf {} +
+            fi
+
+            echo "Preparing deployment directory: ${{ env.DEPLOY_PATH }}"
+            sudo rm -rf "${{ env.DEPLOY_PATH }}"
+            sudo mkdir -p "${{ env.DEPLOY_PATH }}"
+            sudo chown -R "${{ env.VM_USER }}": "${{ env.DEPLOY_PATH }}"
+
+            echo "Cloning latest repository into deployment path"
+            git clone "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" "${{ env.DEPLOY_PATH }}"
+            cd "${{ env.DEPLOY_PATH }}"
+            git checkout "${{ github.ref_name }}"
+
+            if [ -z "$COMPOSE_FILE_PATH" ]; then
+              if [ -f "$STACK_DIR/docker-compose.yml" ]; then
+                COMPOSE_FILE_PATH="$STACK_DIR/docker-compose.yml"
+              elif [ -f "$STACK_DIR/docker-compose.yml" ]; then
+                COMPOSE_FILE_PATH="$STACK_DIR/docker-compose.yml"
+              elif [ -f "${{ env.DEPLOY_PATH }}/docker-compose.yml" ]; then
+                COMPOSE_FILE_PATH="${{ env.DEPLOY_PATH }}/docker-compose.yml"
+              elif [ -f "${{ env.DEPLOY_PATH }}/docker-compose.yml" ]; then
+                COMPOSE_FILE_PATH="${{ env.DEPLOY_PATH }}/docker-compose.yml"
+              fi
+            fi
+
+            if [ -z "$ENV_FILE_PATH" ]; then
+              if [ -f "$STACK_DIR/.env.production" ]; then
+                ENV_FILE_PATH="$STACK_DIR/.env.production"
+              elif [ -f "${{ env.DEPLOY_PATH }}/.env.production" ]; then
+                ENV_FILE_PATH="${{ env.DEPLOY_PATH }}/.env.production"
+              fi
+            fi
+
+            echo "Using compose file: $COMPOSE_FILE_PATH"
+            echo "Using env file: $ENV_FILE_PATH"
+
+            if [ ! -f "$ENV_FILE_PATH" ]; then
+              echo "Missing env file: $ENV_FILE_PATH"
+              echo "Create it from .env.production.example before deploying."
+              exit 1
+            fi
+
+            if [ ! -f "$COMPOSE_FILE_PATH" ]; then
+              echo "Missing compose file: $COMPOSE_FILE_PATH"
+              exit 1
+            fi
+
+            TARGET_ENV_IN_DEPLOY="${{ env.DEPLOY_PATH }}/.env.production"
+            if [ "$ENV_FILE_PATH" != "$TARGET_ENV_IN_DEPLOY" ]; then
+              cp "$ENV_FILE_PATH" "$TARGET_ENV_IN_DEPLOY"
+              ENV_FILE_PATH="$TARGET_ENV_IN_DEPLOY"
+              echo "Synced env file into deploy path: $ENV_FILE_PATH"
+            fi
+
+            echo "Building and validating compose stack"
+            docker compose --project-directory "${{ env.DEPLOY_PATH }}" -f "$COMPOSE_FILE_PATH" --env-file "$ENV_FILE_PATH" pull --ignore-pull-failures
+            docker compose --project-directory "${{ env.DEPLOY_PATH }}" -f "$COMPOSE_FILE_PATH" --env-file "$ENV_FILE_PATH" build --pull --parallel
+            docker compose --project-directory "${{ env.DEPLOY_PATH }}" -f "$COMPOSE_FILE_PATH" --env-file "$ENV_FILE_PATH" config -q
+
+            echo "Starting services"
+            docker compose --project-directory "${{ env.DEPLOY_PATH }}" -f "$COMPOSE_FILE_PATH" --env-file "$ENV_FILE_PATH" up -d --remove-orphans
+
+            echo "Container status"
+            docker compose --project-directory "${{ env.DEPLOY_PATH }}" -f "$COMPOSE_FILE_PATH" --env-file "$ENV_FILE_PATH" ps
+
+            echo "Recent web logs"
+            docker compose --project-directory "${{ env.DEPLOY_PATH }}" -f "$COMPOSE_FILE_PATH" --env-file "$ENV_FILE_PATH" logs --tail=40 web || true
+
+            echo "Deployment complete"

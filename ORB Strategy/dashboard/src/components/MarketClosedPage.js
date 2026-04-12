@@ -2,28 +2,39 @@
 
 import Header from "./header";
 import React from "react";
-// import Stocks1 from "./stocks1";
-
-import style from "./styles.module.css";
+import { Alert, Box, Card, CardContent, Container, Stack, Typography } from "@mui/material";
 
 function MarketClosedPage({ marketStatus }) {
 	return (
-		<div className='App'>
+		<Box sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
 			<Header />
-			{marketStatus ? (
-				<div className={style.marketClosed}>Market Closed</div>
-			) : null}
+			<Container maxWidth='sm' sx={{ py: 6 }}>
+				<Stack spacing={3}>
+					{marketStatus ? (
+						<Alert severity='error' variant='filled'>
+							Market is currently closed
+						</Alert>
+					) : null}
 
-			<br></br>
-			<div className={style.closed}>
-				<h1>Market Timings</h1>
-				<h2>Monday to Friday</h2>
-				<h3>9:15 AM to 3:30 PM</h3>
-				<h4>* Closed on weekends and holidays</h4>
-			</div>
-
-			<br></br>
-		</div>
+					<Card variant='outlined'>
+						<CardContent>
+							<Typography variant='h5' fontWeight={700} gutterBottom>
+								Market Timings
+							</Typography>
+							<Typography variant='body1' color='text.secondary'>
+								Monday to Friday
+							</Typography>
+							<Typography variant='h6' sx={{ mt: 1.5 }}>
+								09:15 AM to 03:30 PM (IST)
+							</Typography>
+							<Typography variant='body2' color='text.secondary' sx={{ mt: 1.5 }}>
+								Closed on weekends and exchange holidays.
+							</Typography>
+						</CardContent>
+					</Card>
+				</Stack>
+			</Container>
+		</Box>
 	);
 }
 

@@ -1,299 +1,389 @@
 // @ts-nocheck
-var KiteConnect = require("kiteconnect").KiteConnect;
-var KiteTicker = require("kiteconnect").KiteTicker;
-
-const express = require("express");
+const { KiteConnect, KiteTicker } = require("kiteconnect");
 const http = require("http");
-const socketIo = require("socket.io");
-const port = 4001;
+const { Server } = require("socket.io");
 
-const app = express();
-module.exports.login = async (req, res) => {
-	var requestToken = req.params.requestToken;
+const { getSymbolList } = require("../data/nse_symbols");
+const { getAlgo, getAlgoList, DEFAULT_ALGO } = require("../algos/index");
 
-	const apiKey = process.env.API_KEY,
-		apiSecret = process.env.API_SECRET;
+// ─── Configuration ────────────────────────────────────────────────────────────
+const API_KEY       = process.env.API_KEY;
+const API_SECRET    = process.env.API_SECRET;
+const SOCKET_PORT   = Number(process.env.SOCKET_PORT   || 4001);
+const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN        || "http://localhost:3000";
+const WATCHLIST     = process.env.WATCHLIST_SIZE       || "NIFTY50";
+const MARKET_STATUS_SYMBOL = process.env.MARKET_STATUS_SYMBOL || "NSE:NIFTY 50";
+const MARKET_OPEN_TIME = process.env.MARKET_OPEN_TIME || "09:15:00";
+const MARKET_CLOSE_TIME = process.env.MARKET_CLOSE_TIME || "15:30:00";
 
-	var options = {
-		api_key: apiKey,
-	};
+// ─── Runtime state ────────────────────────────────────────────────────────────
+let io;
+let socketServer;
+let socketBootstrapped = false;
 
-	var kc = new KiteConnect(options);
-	kc.generateSession(requestToken, apiSecret)
-		.then(function (response) {
-			accessToken = response?.access_token;
-			return res.send({ accessToken: accessToken });
-		})
-		.catch(function (err) {
-			console.log("error : ", err);
-			return err.message;
-		});
-};
+let ticker;
+let activeAccessToken = null;
 
-module.exports.getData = (req, res) => {
-	var data;
-	var items = [
-		738561,
-		2953217,
-		408065,
-		895745,
-		341249,
-		779521,
-		5582849,
-		3851265,
-		3529217,
-		215553,
-		2813441,
-		590337,
-		7401729,
-		3917569,
-		2022913,
-		693505,
-		4451329,
-		2815745,
-		912129,
-		424961,
-		4267265,
-		4704769,
-	];
-	const companyData = {
-		738561: {
-			name: "Reliance",
-			high: Number.MIN_SAFE_INTEGER,
-			low: Number.MAX_SAFE_INTEGER,
-		},
-		2953217: {
-			name: "TCS",
-			high: Number.MIN_SAFE_INTEGER,
-			low: Number.MAX_SAFE_INTEGER,
-		},
-		408065: {
-			name: "Infosys",
-			high: Number.MIN_SAFE_INTEGER,
-			low: Number.MAX_SAFE_INTEGER,
-		},
-		895745: {
-			name: "TataSteel",
-			high: Number.MIN_SAFE_INTEGER,
-			low: Number.MAX_SAFE_INTEGER,
-		},
-		341249: {
-			name: "HDFC Bank",
-			high: Number.MIN_SAFE_INTEGER,
-			low: Number.MAX_SAFE_INTEGER,
-		},
-		779521: {
-			name: "SBIN",
-			high: Number.MIN_SAFE_INTEGER,
-			low: Number.MAX_SAFE_INTEGER,
-		},
-		5582849: {
-			name: "SBI LIFE",
-			high: Number.MIN_SAFE_INTEGER,
-			low: Number.MAX_SAFE_INTEGER,
-		},
-		3851265: {
-			name: "Delta Corpo",
-			high: Number.MIN_SAFE_INTEGER,
-			low: Number.MAX_SAFE_INTEGER,
-		},
-		3529217: {
-			name: "Tornt Power",
-			high: Number.MIN_SAFE_INTEGER,
-			low: Number.MAX_SAFE_INTEGER,
-		},
-		215553: {
-			name: "DHFL",
-			high: Number.MIN_SAFE_INTEGER,
-			low: Number.MAX_SAFE_INTEGER,
-		},
-		2813441: {
-			name: "Radico",
-			high: Number.MIN_SAFE_INTEGER,
-			low: Number.MAX_SAFE_INTEGER,
-		},
-		590337: {
-			name: "Bestagro",
-			high: Number.MIN_SAFE_INTEGER,
-			low: Number.MAX_SAFE_INTEGER,
-		},
-		7401729: {
-			name: "RosselInd",
-			high: Number.MIN_SAFE_INTEGER,
-			low: Number.MAX_SAFE_INTEGER,
-		},
-		3917569: {
-			name: "Bang",
-			high: Number.MIN_SAFE_INTEGER,
-			low: Number.MAX_SAFE_INTEGER,
-		},
-		2022913: {
-			name: "LIFC",
-			high: Number.MIN_SAFE_INTEGER,
-			low: Number.MAX_SAFE_INTEGER,
-		},
-		693505: {
-			name: "MTAR",
-			high: Number.MIN_SAFE_INTEGER,
-			low: Number.MAX_SAFE_INTEGER,
-		},
-		4451329: {
-			name: "Adani Power",
-			high: Number.MIN_SAFE_INTEGER,
-			low: Number.MAX_SAFE_INTEGER,
-		},
-		2815745: {
-			name: "Maruti Suzuki",
-			high: Number.MIN_SAFE_INTEGER,
-			low: Number.MAX_SAFE_INTEGER,
-		},
-		912129: {
-			name: "Adani Green",
-			high: Number.MIN_SAFE_INTEGER,
-			low: Number.MAX_SAFE_INTEGER,
-		},
-		424961: {
-			name: "ITC",
-			high: Number.MIN_SAFE_INTEGER,
-			low: Number.MAX_SAFE_INTEGER,
-		},
-		4267265: {
-			name: "Bajaj Auto",
-			high: Number.MIN_SAFE_INTEGER,
-			low: Number.MAX_SAFE_INTEGER,
-		},
-		4704769: {
-			name: "Future Retail",
-			high: Number.MIN_SAFE_INTEGER,
-			low: Number.MAX_SAFE_INTEGER,
-		},
-	};
+/**
+ * tokenToName  { [instrumentToken]: string }  maps token → trading symbol
+ * stockState   { [instrumentToken]: object }  per-algo state per stock
+ */
+let tokenToName      = {};
+let stockState       = {};
+let subscribedTokens = [];
 
-	var access_token = req.params.accessToken;
+/** Active algorithm module (default: ORB) */
+let activeAlgo = getAlgo(DEFAULT_ALGO);
 
-	let interval;
-
-	const server = http.createServer(app);
-	const io = socketIo(server, {
-		cors: {
-			origin: "http://localhost:3000",
-			methods: ["GET", "POST"],
-		},
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function formatTimeInIndia() {
+	return new Date().toLocaleTimeString("en-GB", {
+		hour12: false,
+		timeZone: "Asia/Kolkata",
 	});
-	const server1Sockets = new Set();
+}
 
-	var ticker = new KiteTicker({
-		api_key: process.env.API_KEY,
-		access_token: access_token,
+function formatDateInIndia(date = new Date()) {
+	return date.toLocaleDateString("en-CA", {
+		timeZone: "Asia/Kolkata",
+	});
+}
+
+function formatDateTimeInIndia(date) {
+	if (!date) return null;
+	const value = date instanceof Date ? date : new Date(date);
+	if (Number.isNaN(value.getTime())) return null;
+	return value.toLocaleString("en-GB", {
+		hour12: false,
+		timeZone: "Asia/Kolkata",
+	});
+}
+
+function isTradingHoursNow() {
+	const now = new Date();
+	const currentTime = now.toLocaleTimeString("en-GB", {
+		hour12: false,
+		timeZone: "Asia/Kolkata",
+	});
+	const weekday = now.toLocaleDateString("en-US", {
+		weekday: "short",
+		timeZone: "Asia/Kolkata",
+	});
+	const isWeekend = weekday === "Sat" || weekday === "Sun";
+
+	return {
+		isWeekend,
+		currentTime,
+		inTradingHours:
+			!isWeekend && currentTime >= MARKET_OPEN_TIME && currentTime <= MARKET_CLOSE_TIME,
+	};
+}
+
+/**
+ * Resolve NSE symbols → instrument tokens using kite.getLTP().
+ * getLTP returns { "NSE:SYMBOL": { instrument_token, last_price, … } }.
+ * Batched in groups of 500 to stay within API limits.
+ *
+ * @param {object} kc  Authenticated KiteConnect instance
+ * @returns {{ tokenToName: object, tokens: number[] }}
+ */
+async function resolveInstrumentTokens(kc) {
+	const symbols     = getSymbolList(WATCHLIST);
+	const nsePrefixed = symbols.map((s) => `NSE:${s}`);
+	const BATCH_SIZE  = 500;
+	const merged      = {};
+
+	for (let i = 0; i < nsePrefixed.length; i += BATCH_SIZE) {
+		const batch = nsePrefixed.slice(i, i + BATCH_SIZE);
+		try {
+			const result = await kc.getLTP(batch);
+			Object.assign(merged, result);
+		} catch (err) {
+			console.warn(`getLTP batch ${i}–${i + BATCH_SIZE} failed:`, err.message);
+		}
+	}
+
+	const map = {};
+	for (const [key, value] of Object.entries(merged)) {
+		map[value.instrument_token] = key.replace("NSE:", "");
+	}
+
+	return {
+		tokenToName: map,
+		tokens: Object.keys(map).map(Number),
+	};
+}
+
+// ─── Socket server (singleton) ────────────────────────────────────────────────
+function ensureSocketServer() {
+	if (socketBootstrapped) return;
+
+	socketServer = http.createServer();
+	io = new Server(socketServer, {
+		cors: { origin: CLIENT_ORIGIN, methods: ["GET", "POST"] },
 	});
 
 	io.on("connection", (socket) => {
-		ticker.connect();
-		console.log("New client connected");
-
-		if (interval) {
-			clearInterval(interval);
-		}
-		server1Sockets.add(socket);
-		interval = setInterval(() => getApiAndEmit(socket, data), 2000);
-		socket.on("disconnect", () => {
-			server1Sockets.delete(socket);
-			ticker.disconnect();
-			clearInterval(interval);
-			console.log("Client disconnected");
-		});
-	});
-
-	const getApiAndEmit = (socket, data) => {
-		socket.emit("FromAPI", data);
-	};
-
-	//market timings
-	const StartTime = "09:15:00";
-	const CloseTime = "09:30:00";
-
-	//getting realtime data
-	function onTicks(ticks) {
-		var currentTime = new Date().toLocaleTimeString("en-GB", {
-			hour12: false,
-		});
-		console.log("currentTime: ", currentTime);
-
-		for (let i = 0; i < ticks.length; i++) {
-			var instrumentToken = ticks[i].instrument_token;
-
-			var ltp = ticks[i].last_price;
-			console.log("");
-			console.log("Name : " + companyData[instrumentToken].name);
-			console.log("High : " + companyData[instrumentToken].high);
-			console.log("Low : " + companyData[instrumentToken].low);
-			console.log("Last Trading Price : " + ltp);
-			console.log("");
-			if (currentTime >= StartTime && currentTime <= CloseTime) {
-				if (ltp > companyData[instrumentToken].high) {
-					companyData[instrumentToken].high = ltp;
-				}
-				if (ltp < companyData[instrumentToken].low) {
-					companyData[instrumentToken].low = ltp;
-				}
-			}
-
-			companyData[instrumentToken].lastTradePrice = ltp;
-
-			if (ltp > companyData[instrumentToken].high) {
-				companyData[instrumentToken].status = "Buy";
-				companyData[instrumentToken].stoploss =
-					companyData[instrumentToken].low;
-			} else if (ltp < companyData[instrumentToken].low) {
-				companyData[instrumentToken].status = "Sell";
-				companyData[instrumentToken].stoploss =
-					companyData[instrumentToken].high;
-			} else {
-				companyData[instrumentToken].status = "Hold";
-				companyData[instrumentToken].stoploss = 0;
-			}
-		}
-
-		data = [];
-
-		for (var i = 0; i < items.length; i++) {
-			data.push(companyData[items[i]]);
-		}
-	}
-	function subscribe() {
-		ticker.subscribe(items);
-		ticker.setMode(ticker.modeFull, items);
-	}
-
-	function disconnect() {
-		ticker.disconnect();
-		console.log("disconnected");
-	}
-
-	//starting connection between server and client
-	function destroySockets(sockets) {
-		for (const socket of sockets.values()) {
-			socket.destroy();
-		}
-	}
-
-	server.listen(port, () => {
-		console.log("closing port");
-		destroySockets(server1Sockets);
-		console.log(`Listening on port ${port}`);
-	});
-
-	//ticker functions
-	ticker.autoReconnect(true, 10, 5);
-	ticker.on("ticks", onTicks);
-	ticker.on("connect", subscribe);
-	ticker.on("disconnect", disconnect);
-	ticker.on("reconnecting", function (reconnect_interval, reconnections) {
-		console.log(
-			"Reconnecting: attempet - ",
-			reconnections,
-			" innterval - ",
-			reconnect_interval
+		console.log("Socket client connected:", socket.id);
+		socket.emit("FromAPI", buildBroadcastPayload());
+		socket.on("disconnect", () =>
+			console.log("Socket client disconnected:", socket.id)
 		);
 	});
+
+	socketServer.listen(SOCKET_PORT, () =>
+		console.log(`Socket server listening on port ${SOCKET_PORT}`)
+	);
+
+	socketBootstrapped = true;
+}
+
+// ─── Tick processor ───────────────────────────────────────────────────────────
+
+/**
+ * Builds the socket payload: only stocks matching the active algo's criteria.
+ * Payload shape: { algo, algoLabel, signals, total, matched, updatedAt }
+ */
+function buildBroadcastPayload() {
+	const signals = [];
+
+	for (const [token, state] of Object.entries(stockState)) {
+		if (activeAlgo.matchesCriteria(state)) {
+			signals.push({
+				name: tokenToName[token] || `Token:${token}`,
+				...state,
+			});
+		}
+	}
+
+	// Buy signals first, then Sell, then alphabetical within each group
+	signals.sort((a, b) => {
+		const ORDER = { Buy: 0, Sell: 1 };
+		const diff  = (ORDER[a.status] ?? 2) - (ORDER[b.status] ?? 2);
+		return diff !== 0 ? diff : a.name.localeCompare(b.name);
+	});
+
+	return {
+		algo:      activeAlgo.name,
+		algoLabel: activeAlgo.label,
+		signals,
+		total:     subscribedTokens.length,
+		matched:   signals.length,
+		updatedAt: formatTimeInIndia(),
+	};
+}
+
+function processTicks(ticks) {
+	const currentTime = formatTimeInIndia();
+
+	for (const tick of ticks) {
+		const token = tick.instrument_token;
+		if (!stockState[token]) continue;
+		stockState[token] = activeAlgo.onTick(stockState[token], tick, currentTime);
+	}
+
+	if (io) io.emit("FromAPI", buildBroadcastPayload());
+}
+
+// ─── Ticker lifecycle ─────────────────────────────────────────────────────────
+function stopExistingTicker() {
+	if (!ticker) return;
+	try {
+		ticker.disconnect();
+	} catch (err) {
+		console.error("Error disconnecting ticker:", err.message);
+	}
+	ticker = null;
+	activeAccessToken = null;
+}
+
+function resetStockState() {
+	const fresh = {};
+	for (const token of subscribedTokens) {
+		fresh[token] = activeAlgo.initStockState();
+	}
+	stockState = fresh;
+}
+
+/**
+ * Start the KiteTicker for the given access token.
+ * @param {string} accessToken
+ * @param {number[]} tokens
+ * @returns {boolean}  true = newly started, false = already running same token
+ */
+function startTicker(accessToken, tokens) {
+	if (!API_KEY) throw new Error("API_KEY is not configured on server");
+
+	if (ticker && activeAccessToken === accessToken) return false;
+
+	stopExistingTicker();
+	subscribedTokens = tokens;
+	resetStockState();
+
+	ticker = new KiteTicker({ api_key: API_KEY, access_token: accessToken });
+	ticker.autoReconnect(true, 10, 5);
+
+	ticker.on("ticks",        processTicks);
+	ticker.on("connect",      () => {
+		ticker.subscribe(tokens);
+		ticker.setMode(ticker.modeFull, tokens);
+		console.log(`Ticker connected: subscribing to ${tokens.length} instruments`);
+	});
+	ticker.on("disconnect",   () => console.log("Ticker disconnected"));
+	ticker.on("reconnecting", (int, att) => console.log("Ticker reconnecting", { att, int }));
+	ticker.on("error",        (err) => console.error("Ticker error:", err?.message || err));
+
+	ticker.connect();
+	activeAccessToken = accessToken;
+	return true;
+}
+
+// ─── Exported controllers ─────────────────────────────────────────────────────
+module.exports.login = async (req, res) => {
+	const requestToken = (req.body?.requestToken || "").trim();
+	if (!requestToken)
+		return res.status(400).json({ error: "requestToken is required" });
+	if (!API_KEY || !API_SECRET)
+		return res.status(500).json({ error: "API credentials not configured on server" });
+
+	try {
+		const kc      = new KiteConnect({ api_key: API_KEY });
+		const session = await kc.generateSession(requestToken, API_SECRET);
+		return res.status(200).json({ accessToken: session?.access_token });
+	} catch (err) {
+		console.error("Session generation failed:", err?.message || err);
+		return res.status(401).json({ error: "Unable to generate access token" });
+	}
 };
+
+module.exports.startStream = async (req, res) => {
+	const accessToken = (req.body?.accessToken || "").trim();
+	const algoName    = ((req.body?.algo || DEFAULT_ALGO) + "").toUpperCase();
+
+	if (!accessToken)
+		return res.status(400).json({ error: "accessToken is required" });
+
+	// Switch algo if requested (can happen without restarting the ticker)
+	const requestedAlgo = getAlgo(algoName);
+	if (requestedAlgo.name !== activeAlgo.name) {
+		activeAlgo = requestedAlgo;
+		resetStockState();
+		console.log(`Algo switched to ${activeAlgo.name}`);
+	}
+
+	try {
+		ensureSocketServer();
+
+		const kc = new KiteConnect({ api_key: API_KEY, access_token: accessToken });
+		const { tokenToName: resolved, tokens } = await resolveInstrumentTokens(kc);
+
+		if (tokens.length === 0)
+			return res.status(502).json({
+				error: "Could not resolve any instrument tokens from Kite getLTP",
+			});
+
+		tokenToName = resolved;
+		const started = startTicker(accessToken, tokens);
+
+		return res.status(200).json({
+			status:      started ? "started" : "already_running",
+			algo:        activeAlgo.name,
+			algoLabel:   activeAlgo.label,
+			instruments: tokens.length,
+			socketPort:  SOCKET_PORT,
+		});
+	} catch (err) {
+		console.error("Stream start failed:", err?.message || err);
+		return res.status(500).json({ error: "Unable to start market data stream" });
+	}
+};
+
+module.exports.setAlgo = (req, res) => {
+	const algoName  = ((req.body?.algo || "") + "").toUpperCase();
+	const requested = getAlgo(algoName);
+
+	activeAlgo = requested;
+	resetStockState();
+	console.log(`Algo switched to ${activeAlgo.name}`);
+
+	if (io) io.emit("FromAPI", buildBroadcastPayload());
+
+	return res.status(200).json({
+		algo:      activeAlgo.name,
+		algoLabel: activeAlgo.label,
+	});
+};
+
+module.exports.streamHealth = (_req, res) => {
+	return res.status(200).json({
+		socketServerStarted: socketBootstrapped,
+		streamActive:        Boolean(ticker),
+		activeAlgo:          activeAlgo.name,
+		instruments:         subscribedTokens.length,
+		socketPort:          SOCKET_PORT,
+	});
+};
+
+module.exports.listAlgos = (_req, res) => {
+	return res.status(200).json(getAlgoList());
+};
+
+module.exports.marketStatus = async (req, res) => {
+	const tokenFromQuery = (req.query?.accessToken || "").trim();
+	const tokenFromBody = (req.body?.accessToken || "").trim();
+	const accessToken = tokenFromQuery || tokenFromBody || activeAccessToken || "";
+	const { inTradingHours, isWeekend, currentTime } = isTradingHoursNow();
+
+	if (!accessToken) {
+		return res.status(200).json({
+			open: inTradingHours,
+			source: "schedule_fallback",
+			reason: "No access token available for Kite quote check",
+			isWeekend,
+			currentTime,
+			marketOpenTime: MARKET_OPEN_TIME,
+			marketCloseTime: MARKET_CLOSE_TIME,
+		});
+	}
+
+	try {
+		const kc = new KiteConnect({ api_key: API_KEY, access_token: accessToken });
+		const quoteResponse = await kc.getQuote([MARKET_STATUS_SYMBOL]);
+		const quote = quoteResponse?.[MARKET_STATUS_SYMBOL] || null;
+		const quoteTimestamp = quote?.timestamp || quote?.last_trade_time || null;
+		const quoteDateIST = quoteTimestamp
+			? formatDateInIndia(quoteTimestamp instanceof Date ? quoteTimestamp : new Date(quoteTimestamp))
+			: null;
+		const todayIST = formatDateInIndia();
+		const isQuoteFreshToday = Boolean(quoteDateIST && quoteDateIST === todayIST);
+		const open = inTradingHours && isQuoteFreshToday;
+
+		return res.status(200).json({
+			open,
+			source: "kite_quote",
+			symbol: MARKET_STATUS_SYMBOL,
+			isWeekend,
+			inTradingHours,
+			isQuoteFreshToday,
+			currentTime,
+			quoteTime: formatDateTimeInIndia(quoteTimestamp),
+			marketOpenTime: MARKET_OPEN_TIME,
+			marketCloseTime: MARKET_CLOSE_TIME,
+		});
+	} catch (err) {
+		console.error("Kite market status check failed:", err?.message || err);
+		return res.status(200).json({
+			open: inTradingHours,
+			source: "schedule_fallback",
+			reason: "Kite quote lookup failed",
+			error: err?.message || "unknown_error",
+			isWeekend,
+			currentTime,
+			marketOpenTime: MARKET_OPEN_TIME,
+			marketCloseTime: MARKET_CLOSE_TIME,
+		});
+	}
+};
+
+// backward compat alias
+module.exports.getData = module.exports.startStream;

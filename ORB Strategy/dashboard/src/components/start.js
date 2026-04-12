@@ -1,98 +1,272 @@
 // @ts-nocheck
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import axios from "axios";
+import {
+	Alert,
+	Box,
+	Button,
+	Card,
+	CardContent,
+	CircularProgress,
+	FormControl,
+	InputLabel,
+	MenuItem,
+	Select,
+	Stack,
+	TextField,
+	Typography,
+} from "@mui/material";
 
-function Start() {
-	const [token, setToken] = useState("");
-	const [showLogin, setLogin] = useState(true);
-	const [showGetToken, setGetToken] = useState(false);
-	const [showStart, setStart] = useState(false);
-	const getToken = () => {
-		const url = "https://kite.trade/connect/login?api_key=6zfi2amoxjco04yo&v=3";
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "http://localhost:8001";
+const KITE_API_KEY = process.env.REACT_APP_KITE_API_KEY || "";
 
-		window.open(url, "_blank");
+const WATCHLIST_OPTIONS = [
+	{ value: "NIFTY50",  label: "Nifty 50  (50 stocks)"  },
+	{ value: "NIFTY100", label: "Nifty 100 (100 stocks)" },
+	{ value: "NIFTY500", label: "Nifty 500 (500 stocks)" },
+];
 
-		setLogin(false);
-		setGetToken(true);
-		return false;
+function Start({ onStreamStarted }) {
+	const [token, setToken]         = useState("");
+	const [step, setStep]           = useState("login"); // login | getToken | configure | running
+	const [algos, setAlgos]         = useState([]);
+	const [selectedAlgo, setAlgo]   = useState("ORB");
+	const [watchlist, setWatchlist] = useState("NIFTY50");
+	const [error, setError]         = useState("");
+	const [loading, setLoading]     = useState(false);
+	const [notice, setNotice]       = useState("");
+
+	// Fetch available algos from the server
+	useEffect(() => {
+		axios
+			.get(`${API_BASE_URL}/api/algos`)
+			.then((res) => setAlgos(res.data))
+			.catch(() => {
+				// Fallback list so UI never breaks
+				setAlgos([
+					{ name: "ORB",      label: "Opening Range Breakout"   },
+					{ name: "VWAP",     label: "VWAP Crossover"           },
+					{ name: "MOMENTUM", label: "Momentum (% from Open)"   },
+					{ name: "EMA",      label: "EMA Crossover (9/21)"     },
+				]);
+			});
+
+		// If we already have an access token, skip straight to configure
+		if (localStorage.getItem("accessToken")) {
+			setStep("configure");
+		}
+	}, []);
+
+	const handleKiteLogin = () => {
+		if (!KITE_API_KEY) {
+			setError("Missing REACT_APP_KITE_API_KEY. Configure it in frontend .env.");
+			return;
+		}
+		window.open(`https://kite.trade/connect/login?api_key=${KITE_API_KEY}&v=3`, "_blank");
+		setError("");
+		setNotice("Kite login opened in a new tab. Paste the request token here once redirected.");
+		setStep("getToken");
 	};
 
-	const handleInput = (e) => {
-		setToken(e.target.value);
-	};
-	const sendToken = async () => {
-		console.log(token);
-		await axios
-			.get("http://localhost:8001/api/login/" + token)
-			.then((response) => {
-				localStorage.setItem("accessToken", response.data.accessToken);
-				alert("access token received successfully");
-
-				setGetToken(false);
-				setStart(true);
-			})
-			.catch((err) => console.log("error:", err));
-	};
-
-	const start = async () => {
-		const token = localStorage.getItem("accessToken");
-		if (!token) {
-			console.log("Try getting request token again, no access token found");
-		} else {
-			await axios
-				.get("http://localhost:8001/api/data/" + token)
-				.then((res) => {
-					setStart(false);
-				})
-				.catch((err) => {
-					alert("accesstoken Expired!!!");
-
-					localStorage.removeItem("accessToken");
-					console.log(err.message);
-				});
-			// setStart(false);
+	const handleSendToken = async () => {
+		setError("");
+		setNotice("");
+		setLoading(true);
+		try {
+			const res = await axios.post(`${API_BASE_URL}/api/login`, { requestToken: token });
+			localStorage.setItem("accessToken", res.data.accessToken);
+			setNotice("Access token saved. Configure strategy and start the stream.");
+			setStep("configure");
+		} catch (err) {
+			setError(err?.response?.data?.error || "Unable to get access token");
+		} finally {
+			setLoading(false);
 		}
 	};
+
+	const handleStart = async () => {
+		setError("");
+		setNotice("");
+		setLoading(true);
+		const accessToken = localStorage.getItem("accessToken");
+		if (!accessToken) {
+			setError("No access token found. Please log in again.");
+			setStep("login");
+			setLoading(false);
+			return;
+		}
+		try {
+			const res = await axios.post(`${API_BASE_URL}/api/stream/start`, {
+				accessToken,
+				algo: selectedAlgo,
+			});
+			setStep("running");
+			setNotice(`Stream running with ${res.data.algoLabel} (${res.data.instruments} instruments).`);
+			if (onStreamStarted) {
+				onStreamStarted({
+					algo:        res.data.algo,
+					algoLabel:   res.data.algoLabel,
+					instruments: res.data.instruments,
+				});
+			}
+		} catch (err) {
+			if (err?.response?.status === 401) {
+				localStorage.removeItem("accessToken");
+				setStep("login");
+				setError("Access token expired. Please log in again.");
+			} else {
+				setError(err?.response?.data?.error || err.message);
+			}
+		} finally {
+			setLoading(false);
+		}
+	};
+
+	const handleSwitchAlgo = async (newAlgo) => {
+		setAlgo(newAlgo);
+		setError("");
+		setNotice("");
+		try {
+			await axios.post(`${API_BASE_URL}/api/algo`, { algo: newAlgo });
+			setNotice(`Switched to ${newAlgo} algorithm.`);
+		} catch (err) {
+			setError(err?.response?.data?.error || "Failed to switch algo");
+		}
+	};
+
 	return (
-		<div>
-			{showLogin && localStorage.getItem("accessToken") == null ? (
-				<button
-					className='btn btn-primary mt-3 mx-auto d-block'
-					onClick={getToken}
-				>
-					Login
-				</button>
-			) : null}
-			{showGetToken ? (
-				<div>
-					<input
-						className='mt-3 mx-auto d-block w-25'
-						placeholder='enter request token'
+		<Card variant='outlined' sx={{ borderRadius: 3 }}>
+			<CardContent>
+				<Stack spacing={2.5}>
+					<Box>
+						<Typography variant='h6' fontWeight={700}>
+							Strategy Control
+						</Typography>
+						<Typography variant='body2' color='text.secondary'>
+							Authenticate, choose algorithm, and run live signal scanning.
+						</Typography>
+					</Box>
+
+					{error ? <Alert severity='error'>{error}</Alert> : null}
+					{notice ? <Alert severity='info'>{notice}</Alert> : null}
+
+			{/* ── Step 1: Login via Kite ─────────────────── */}
+			{step === "login" && (
+				<Stack spacing={1.5}>
+					<Typography variant='body2' color='text.secondary'>
+						Connect your Kite account to generate session access token.
+					</Typography>
+					<Button variant='contained' onClick={handleKiteLogin}>
+						Login with Kite
+					</Button>
+				</Stack>
+			)}
+
+			{/* ── Step 2: Paste request token ───────────── */}
+			{step === "getToken" && (
+				<Stack spacing={1.5}>
+					<Typography variant='body2' color='text.secondary'>
+						Paste request token from the redirect URL.
+					</Typography>
+					<TextField
+						fullWidth
+						placeholder='request_token=...'
 						value={token}
-						onChange={handleInput}
-					></input>
-					<span> </span>
-					<button
-						className='btn btn-sm btn-primary mt-3 mx-auto d-block'
-						onClick={sendToken}
+						onChange={(e) => setToken(e.target.value)}
+					/>
+					<Button
+						variant='contained'
+						onClick={handleSendToken}
+						disabled={loading || !token.trim()}
+						startIcon={loading ? <CircularProgress size={16} /> : null}
 					>
-						Get Access Token
-					</button>
-				</div>
-			) : null}
-			{showStart ? (
-				<div>
-					<span> </span>
-					<button
-						className='btn btn-lg btn-primary mt-3 mx-auto d-block'
-						onClick={start}
+						{loading ? "Verifying" : "Get Access Token"}
+					</Button>
+				</Stack>
+			)}
+
+			{/* ── Step 3: Choose algo & watchlist, then start ─ */}
+			{step === "configure" && (
+				<Stack spacing={2}>
+					<FormControl fullWidth>
+						<InputLabel id='algo-label'>Algorithm</InputLabel>
+						<Select
+							labelId='algo-label'
+							label='Algorithm'
+							value={selectedAlgo}
+							onChange={(e) => setAlgo(e.target.value)}
+						>
+							{algos.map((a) => (
+								<MenuItem key={a.name} value={a.name}>
+									{a.label}
+								</MenuItem>
+							))}
+						</Select>
+					</FormControl>
+					{algos.find((a) => a.name === selectedAlgo)?.description ? (
+						<Typography variant='caption' color='text.secondary'>
+							{algos.find((a) => a.name === selectedAlgo).description}
+						</Typography>
+					) : null}
+
+					<FormControl fullWidth>
+						<InputLabel id='watch-label'>Watchlist</InputLabel>
+						<Select
+							labelId='watch-label'
+							label='Watchlist'
+							value={watchlist}
+							onChange={(e) => setWatchlist(e.target.value)}
+						>
+							{WATCHLIST_OPTIONS.map((w) => (
+								<MenuItem key={w.value} value={w.value}>
+									{w.label}
+								</MenuItem>
+							))}
+						</Select>
+					</FormControl>
+					<Typography variant='caption' color='text.secondary'>
+						Signals only show stocks matching selected algorithm criteria.
+					</Typography>
+
+					<Button
+						variant='contained'
+						size='large'
+						onClick={handleStart}
+						disabled={loading}
+						startIcon={loading ? <CircularProgress size={16} /> : null}
 					>
-						Start
-					</button>
-				</div>
-			) : null}
-		</div>
+						{loading ? "Starting" : "Start Stream"}
+					</Button>
+				</Stack>
+			)}
+
+			{/* ── Step 4: Running – allow live algo switch ── */}
+			{step === "running" && (
+				<Stack spacing={1.5}>
+					<FormControl fullWidth>
+						<InputLabel id='switch-algo-label'>Switch Algorithm</InputLabel>
+						<Select
+							labelId='switch-algo-label'
+							label='Switch Algorithm'
+							value={selectedAlgo}
+							onChange={(e) => handleSwitchAlgo(e.target.value)}
+						>
+							{algos.map((a) => (
+								<MenuItem key={a.name} value={a.name}>
+									{a.label}
+								</MenuItem>
+							))}
+						</Select>
+					</FormControl>
+					<Typography variant='caption' color='text.secondary'>
+						Switching resets algorithm state but keeps the realtime stream active.
+					</Typography>
+				</Stack>
+			)}
+				</Stack>
+			</CardContent>
+		</Card>
 	);
 }
 

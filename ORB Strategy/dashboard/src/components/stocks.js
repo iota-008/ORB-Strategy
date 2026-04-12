@@ -1,81 +1,100 @@
 // @ts-nocheck
 
-// import RIL_Logo from "../images/RIL_Logo.png";
-import React, { useState, useEffect } from "react";
-import style from "./styles.module.css";
+import React from "react";
+import {
+	Card,
+	CardContent,
+	Chip,
+	Divider,
+	Grid,
+	Stack,
+	Typography,
+} from "@mui/material";
 
-function Stocks1({ stock }) {
-	// console.log(stock);
+// Fields that exist for internal algo bookkeeping and should not be displayed
+const HIDDEN_FIELDS = new Set([
+	"name", "status", "prevShortEMA", "prevLongEMA", "tickCount",
+]);
 
-	const [color, setColor] = useState("White");
+// Human-readable labels for known field keys
+const FIELD_LABELS = {
+	lastTradePrice: "LTP",
+	stoploss:       "Stoploss",
+	orbHigh:        "ORB High",
+	orbLow:         "ORB Low",
+	vwap:           "VWAP",
+	diffPct:        "VWAP Diff %",
+	openPrice:      "Day Open",
+	changePct:      "Change %",
+	shortEMA:       "Short EMA",
+	longEMA:        "Long EMA",
+};
 
-	useEffect(() => {
-		var target = document.getElementById("stock-action");
+function formatValue(key, value) {
+	if (value === null || value === undefined) return "—";
+	if (typeof value === "number") {
+		if (key.endsWith("Pct") || key.endsWith("pct")) return `${value.toFixed(2)}%`;
+		return value.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+	}
+	return String(value);
+}
 
-		// create an observer instance
-		var observer = new MutationObserver(function (mutations) {
-			mutations.forEach(function (mutation) {
-				// console.info("EVENT TRIGGERT " + mutation.target.id);
-			});
-		});
+function Stocks({ stock }) {
+	if (!stock) return null;
 
-		// configuration of the observer:
-		var config = { attributes: true, childList: true, characterData: true };
+	const isBuy  = stock.status === "Buy";
+	const isSell = stock.status === "Sell";
 
-		// pass in the target node, as well as the observer options
-		observer.observe(target, config);
+	const statusColor = isBuy ? "success" : isSell ? "error" : "default";
 
-		// simulate the Change of the text value of span
-		function simulateChange() {
-			var action = target.innerText;
-
-			if (action === "Sell") {
-				setColor("Red");
-			} else if (action === "Buy") {
-				setColor("Green");
-			} else {
-				setColor("White");
-			}
-		}
-
-		setInterval(simulateChange, 2000);
-	}, []);
+	// Collect display fields: everything that isn't hidden and has a value
+	const displayFields = Object.keys(stock).filter(
+		(k) => !HIDDEN_FIELDS.has(k) && stock[k] !== null && stock[k] !== undefined
+	);
 
 	return (
-		<div className={style.section}>
-			<style>{`#${stock?.name} {background-color: " + color + ";}`}</style>
-			<h1 className={style.companyName}>{stock?.name}</h1>
+		<Card
+			variant='outlined'
+			sx={{
+				height: "100%",
+				borderRadius: 3,
+				borderColor: isBuy ? "success.main" : isSell ? "error.main" : "divider",
+				background: "linear-gradient(180deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.01) 100%)",
+			}}
+		>
+			<CardContent>
+				<Stack direction='row' justifyContent='space-between' alignItems='center' spacing={1.5}>
+					<Typography variant='h6' fontWeight={700} noWrap>
+						{stock.name}
+					</Typography>
+					<Chip label={stock.status} color={statusColor} size='small' />
+				</Stack>
 
-			<div className={style.container}>
-				<div>
-					<p className={style.status}>Action</p>
-					<span className={style.data} id={stock?.name}>
-						{stock?.status}
-					</span>
-				</div>
+				<Divider sx={{ my: 1.5 }} />
 
-				<div>
-					<p className={style.status}>High</p>
-					<span className={style.data}> {stock?.high}</span>
-				</div>
-
-				<div>
-					<p className={style.status}>Low</p>
-					<span className={style.data}> {stock?.low}</span>
-				</div>
-
-				<div>
-					<p className={style.status}>Last Trading Price</p>
-					<span className={style.data}>{stock?.lastTradePrice}</span>
-				</div>
-
-				<div>
-					<p className={style.status}>StopLoss </p>
-					<span className={style.data}>{stock?.stoploss}</span>
-				</div>
-			</div>
-		</div>
+				<Grid container spacing={1.5}>
+					{displayFields.map((key) => (
+						<Grid item xs={6} key={key}>
+							<Typography variant='caption' color='text.secondary'>
+								{FIELD_LABELS[key] || key}
+							</Typography>
+							<Typography
+								variant='body2'
+								fontWeight={600}
+								sx={
+									key === "changePct" || key === "diffPct"
+										? { color: stock[key] >= 0 ? "success.light" : "error.light" }
+										: undefined
+								}
+							>
+								{formatValue(key, stock[key])}
+							</Typography>
+						</Grid>
+					))}
+				</Grid>
+			</CardContent>
+		</Card>
 	);
 }
 
-export default Stocks1;
+export default Stocks;

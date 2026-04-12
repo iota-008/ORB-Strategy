@@ -1,0 +1,65 @@
+services:
+  web:
+    build:
+      context: ./ORB Strategy/dashboard
+      dockerfile: Dockerfile
+      args:
+        REACT_APP_API_BASE_URL: ${REACT_APP_API_BASE_URL}
+        REACT_APP_SOCKET_URL: ${REACT_APP_SOCKET_URL}
+        REACT_APP_KITE_API_KEY: ${REACT_APP_KITE_API_KEY}
+        REACT_APP_DEFAULT_WATCHLIST: ${REACT_APP_DEFAULT_WATCHLIST}
+    image: intratrade-web:latest
+    restart: unless-stopped
+    depends_on:
+      - api
+    expose:
+      - "80"
+    networks:
+      - web
+    labels:
+      - traefik.enable=true
+      - "traefik.http.routers.intratrade.rule=Host(`${APP_DOMAIN}`)"
+      - "traefik.http.routers.intratrade.entrypoints=websecure"
+      - "traefik.http.routers.intratrade.tls.certresolver=letsencrypt"
+      - "traefik.http.services.intratrade.loadbalancer.server.port=80"
+      - "traefik.http.middlewares.intratrade-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.routers.intratrade-http.rule=Host(`${APP_DOMAIN}`)"
+      - "traefik.http.routers.intratrade-http.entrypoints=web"
+      - "traefik.http.routers.intratrade-http.middlewares=intratrade-https-redirect"
+      - "traefik.docker.network=web"
+
+  api:
+    build:
+      context: ./ORB Strategy/server
+      dockerfile: Dockerfile
+    image: intratrade-api:latest
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    expose:
+      - "8001"
+      - "4001"
+    networks:
+      - web
+    labels:
+      - traefik.enable=true
+      - "traefik.http.routers.intratrade-api.rule=Host(`${APP_DOMAIN}`) && (PathPrefix(`/api`) || Path(`/health`))"
+      - "traefik.http.routers.intratrade-api.entrypoints=websecure"
+      - "traefik.http.routers.intratrade-api.tls.certresolver=letsencrypt"
+      - "traefik.http.services.intratrade-api.loadbalancer.server.port=8001"
+      - "traefik.http.routers.intratrade-api-http.rule=Host(`${APP_DOMAIN}`) && (PathPrefix(`/api`) || Path(`/health`))"
+      - "traefik.http.routers.intratrade-api-http.entrypoints=web"
+      - "traefik.http.routers.intratrade-api-http.middlewares=intratrade-https-redirect"
+      - "traefik.http.middlewares.intratrade-https-redirect.redirectscheme.scheme=https"
+      - "traefik.docker.network=web"
+      - "traefik.http.routers.intratrade-socket.rule=Host(`${APP_DOMAIN}`) && PathPrefix(`/socket.io`)"
+      - "traefik.http.routers.intratrade-socket.entrypoints=websecure"
+      - "traefik.http.routers.intratrade-socket.tls.certresolver=letsencrypt"
+      - "traefik.http.services.intratrade-socket.loadbalancer.server.port=4001"
+      - "traefik.http.routers.intratrade-socket-http.rule=Host(`${APP_DOMAIN}`) && PathPrefix(`/socket.io`)"
+      - "traefik.http.routers.intratrade-socket-http.entrypoints=web"
+      - "traefik.http.routers.intratrade-socket-http.middlewares=intratrade-https-redirect"
+
+networks:
+  web:
+    external: true

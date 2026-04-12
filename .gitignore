@@ -1,0 +1,6 @@
+.env
+.env.*
+!.env.production.example
+
+# local compose render output
+*.local

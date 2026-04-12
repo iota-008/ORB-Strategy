@@ -14,7 +14,6 @@
     "axios": "^0.21.1",
     "cors": "^2.8.5",
     "dotenv": "^8.2.0",
-    "expres": "^0.0.5",
     "express": "^4.17.1",
     "follow-redirects": "^1.13.3",
     "kiteconnect": "^3.2.1",

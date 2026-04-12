@@ -1,78 +1,204 @@
-[![Javascript](https://camo.githubusercontent.com/3aaee8bf7885dcf0cea8a5647c4514b7d800b1a730d38bce7dadf6bff883378d/68747470733a2f2f696d672e736869656c64732e696f2f7374617469632f76313f7374796c653d666f722d7468652d6261646765266d6573736167653d4a61766153637269707426636f6c6f723d323232323232266c6f676f3d4a617661536372697074266c6f676f436f6c6f723d463744463145266c6162656c3d)](https://github.com/tterb/atomic-design-ui/blob/master/LICENSEs)
-[![React](https://camo.githubusercontent.com/67a01fa7cf337616274f39c070a11638f2e65720e414ef55b8dd3f9c2a803b2a/68747470733a2f2f696d672e736869656c64732e696f2f7374617469632f76313f7374796c653d666f722d7468652d6261646765266d6573736167653d526561637426636f6c6f723d323232323232266c6f676f3d5265616374266c6f676f436f6c6f723d363144414642266c6162656c3d)](https://github.com/tterb/atomic-design-ui/blob/master/LICENSEs)
-[![Node.js](https://camo.githubusercontent.com/faec9d89bd2c7d47b91d988dcd0f27011c27e8191d45836cfa36bf2b3c2a92bd/68747470733a2f2f696d672e736869656c64732e696f2f7374617469632f76313f7374796c653d666f722d7468652d6261646765266d6573736167653d4e6f64652e6a7326636f6c6f723d333339393333266c6f676f3d4e6f64652e6a73266c6f676f436f6c6f723d464646464646266c6162656c3d)](https://github.com/tterb/atomic-design-ui/blob/master/LICENSEs)
-[![Express.js](https://camo.githubusercontent.com/0a95585d6b3a07028298a45d60b85a1331358bc336549d64dbbc27977f1495f3/68747470733a2f2f696d672e736869656c64732e696f2f7374617469632f76313f7374796c653d666f722d7468652d6261646765266d6573736167653d4578707265737326636f6c6f723d303030303030266c6f676f3d45787072657373266c6f676f436f6c6f723d464646464646266c6162656c3d)](https://github.com/tterb/atomic-design-ui/blob/master/LICENSEs)
-[![Socket.io](https://camo.githubusercontent.com/3cd61d131f627e41a6a6fe60589cc07578949753809967d9fc36dc6e3e445f25/68747470733a2f2f696d672e736869656c64732e696f2f7374617469632f76313f7374796c653d666f722d7468652d6261646765266d6573736167653d536f636b65742e696f26636f6c6f723d303130313031266c6f676f3d536f636b65742e696f266c6f676f436f6c6f723d464646464646266c6162656c3d
-)](https://github.com/tterb/atomic-design-ui/blob/master/LICENSEs)
+# IntraTrade — Realtime Intraday Signal Dashboard
 
+A live intraday trading signal dashboard for NSE equities, powered by Zerodha Kite Connect WebSocket streams. Screens up to 500 NSE stocks in real time across four independent quantitative strategies and surfaces only the actionable Buy/Sell signals with computed stoploss levels.
 
-# IntraTrade
+---
 
-IntraTrade is an application which uses ORB(Opening Range Breakout Strategy) to suggest buy/sell/hold for the stocks.
-For first 15 minutes after the market opening it reads the high and low for that interval.
-And after that it uses that data with the algorithm for suggestions.
+## Architecture
 
+```
+Browser (React)
+		│
+		│  HTTPS  /api/*              REST — algo list, session, market status
+		│  WSS    /socket.io/*        Realtime signal stream
+		▼
+Traefik (reverse proxy + TLS)
+		├──▶ nginx  (React SPA)           :80
+		└──▶ Node/Express                 :8001
+							│
+							│  WebSocket (KiteTicker)
+							▼
+				 Zerodha Kite Connect
+							│  Tick stream (up to 3000 instruments, full mode)
+							▼
+				 Algo Engine (per-tick, stateful, pure functions)
+							│  filtered signals
+							▼
+				 Socket.IO broadcast  ──▶  Browser live update
+```
 
-## Getting the high's and low's of the stocks in first 15 minutes of market opening.
+**Data flow per tick:**
+1. KiteTicker emits a raw tick for each subscribed instrument.
+2. The active algorithm's `onTick(state, tick, timeIST)` pure function computes the new state.
+3. `matchesCriteria(state)` filters to only Buy/Sell signals.
+4. The filtered signal set is broadcast over Socket.IO to all connected clients.
+5. React re-renders only the changed signal cards.
 
-https://user-images.githubusercontent.com/46680697/143286357-533b693a-9fe7-4665-b8c2-2aad8a0a7805.mp4
+---
 
+## Features
 
-## Working of strategy after recording the high's and low's and suggesting whether to buy/sell/hold the stock.
+| Feature | Detail |
+|---|---|
+| **Realtime tick stream** | Kite WebSocket (full mode) — LTP, OHLC, VWAP, volume per tick |
+| **4 swappable strategies** | ORB, VWAP Crossover, Momentum, EMA Crossover |
+| **Live algo switching** | Change strategy mid-session without restarting the stream |
+| **Dynamic watchlists** | Nifty 50 / Nifty 100 / Nifty 500 symbol sets |
+| **Per-signal stoploss** | Each strategy computes its own stoploss level on every tick |
+| **Market status detection** | Kite-backed `/api/market/status` — auto-switches UI at market open |
+| **Auto-recheck** | Dashboard polls every 30 s; transitions closed→open without refresh |
+| **Material dark UI** | MUI v5 dark theme, signal cards with Buy/Sell colour coding |
+| **Containerised deploy** | Docker multi-stage build, Traefik TLS, GitHub Actions CI/CD |
 
-https://user-images.githubusercontent.com/46680697/143284844-b335c5e2-ca57-4ca1-8438-7df46eb43741.mp4
+---
 
+## Trading Strategies
+
+### 1. Opening Range Breakout (ORB)
+Tracks the high and low of every tick during the configurable opening window (default 09:15–09:30).
+- **Buy** when price breaks above ORB High; stoploss = ORB Low
+- **Sell** when price breaks below ORB Low; stoploss = ORB High
+
+### 2. VWAP Crossover
+Uses NSE's intraday VWAP (`average_price` from KiteTicker) as the reference.
+- **Buy** when LTP > VWAP + threshold% (default 0.1%)
+- **Sell** when LTP < VWAP − threshold%; stoploss = VWAP
+
+### 3. Momentum (% from Day Open)
+Measures intraday move from the day's open price (`ohlc.open`).
+- **Buy** when change ≥ +threshold% (default 0.5%)
+- **Sell** when change ≤ −threshold%; stoploss = day open
+
+### 4. EMA Crossover
+Computes two exponential moving averages over successive tick prices using the standard EMA formula, then signals on crossover events.
+- **Buy** on short-EMA (default 9) crossing above long-EMA (default 21)
+- **Sell** on reverse crossover; stoploss tracks the long-EMA dynamically
+
+---
 
 ## Tech Stack
 
-**Client:** React, Socket.io
+| Layer | Technology |
+|---|---|
+| Frontend | React 17, Material UI v5, Socket.IO client, axios |
+| Backend | Node.js 20, Express, Socket.IO server, KiteConnect SDK v3 |
+| Data | Zerodha Kite Connect WebSocket (KiteTicker) |
+| Proxy / TLS | Traefik v2, Let's Encrypt |
+| Container | Docker (multi-stage), nginx:alpine |
+| CI/CD | GitHub Actions → SSH → Docker Compose |
 
-**Server:** Node, Express, Socket.io, Kite API
+---
 
-**Languages** Javascript, HTML, CSS
+## Repository Layout
 
-
-## Installation
-
-Install IntraTrade
-It requires the api key and api secret for using the kite api, so use your own.
-
-```bash
-  - fork the repo
-  - clone from your account
-  - change to the cloned directory
-  - open dashboard and sever folder in different terminal windows
-  - run: npm install
-  - start server first and then dashboard on different ports.
-  - run: npm start
+```
+ORB Strategy/
+	dashboard/          React frontend
+		src/
+			components/     header, home, start, stocks, MarketClosedPage
+		Dockerfile        Multi-stage: node build → nginx serve
+		nginx.conf
+	server/             Node/Express backend
+		algos/            orb.js  vwap.js  momentum.js  ema.js  index.js
+		controllers/      method.js  (KiteTicker + Socket.IO engine)
+		data/             nse_symbols.js  (Nifty 50 / 100 / 500 lists)
+		routes/           api.js
+		Dockerfile
+docker-compose.prod.yml
+.env.production.example
+.github/workflows/deploy.yml
 ```
 
-See the project running on localhost :)
+---
 
-    
-## Features
+## Local Development
 
-- Real time stocks price tracking and suggestions
-- Auto tracking of time (starting 15 mins and rest)
-- UI suggesting buy/sell/hold realtime
+### 1) Server
 
-
-
-## Deployment
-
-The application is not deployed currently as the api is not free.
-Needs to be run in localhost for personal use.
 ```bash
-    git pull origin main
-    git add .
-    git commit -m "your comment"
-    git push origin main
+cd "ORB Strategy/server"
+cp .env.example .env          # fill in API_KEY + API_SECRET
+npm install
+npm start                     # :8001 REST  |  :4001 Socket.IO
 ```
 
-## Authors
+### 2) Dashboard
 
-- [@iota-008](https://www.github.com/iota-008)
+```bash
+cd "ORB Strategy/dashboard"
+cp .env.example .env          # set REACT_APP_KITE_API_KEY
+npm install
+npm start                     # :3000
+```
 
+> Requires a [Zerodha Kite Connect](https://kite.trade/) API key. For development, paste the access token manually in the UI after logging in.
 
+---
 
-* note : The kite account was provided by course instructor/mentor.
+## Production Deployment
+
+Source code is cloned into `/opt/projects/intra-trade` on every push. Stack config (compose + env) lives in `/home/ubuntu/stacks/intra-trade` and is never committed to git.
+
+### 1) One-time VM setup
+
+```bash
+mkdir -p /home/ubuntu/stacks/intra-trade
+# copy docker-compose.prod.yml into it
+# create .env.production from .env.production.example with real values
+```
+
+### 2) `.env.production` sample
+
+```dotenv
+APP_DOMAIN=intra-trade.duckdns.org
+
+# Build-time dashboard config
+REACT_APP_API_BASE_URL=https://intra-trade.duckdns.org
+REACT_APP_SOCKET_URL=https://intra-trade.duckdns.org
+REACT_APP_KITE_API_KEY=your-kite-api-key
+REACT_APP_DEFAULT_WATCHLIST=NIFTY50
+
+# Server runtime
+PORT=8001
+CLIENT_ORIGIN=https://intra-trade.duckdns.org
+SOCKET_PORT=4001
+MARKET_STATUS_SYMBOL=NSE:NIFTY 50
+MARKET_OPEN_TIME=09:15:00
+MARKET_CLOSE_TIME=15:30:00
+
+API_KEY=your-kite-api-key
+API_SECRET=your-kite-api-secret
+
+WATCHLIST_SIZE=NIFTY50
+ORB_START_TIME=09:15:00
+ORB_END_TIME=09:30:00
+VWAP_THRESHOLD_PCT=0.1
+MOMENTUM_THRESHOLD_PCT=0.5
+EMA_SHORT_PERIOD=9
+EMA_LONG_PERIOD=21
+```
+
+### 3) GitHub Secrets & Variables
+
+| Type | Name | Value |
+|---|---|---|
+| Secret | `VM_HOST` | `<vm-ip>` |
+| Secret | `SSH_PRIVATE_KEY` | contents of deploy private key |
+| Secret | `VM_HOST_KEY` | output of `ssh-keyscan -H <vm-ip>` |
+| Variable | `VM_USER` | `ubuntu` |
+| Variable | `DEPLOY_PATH` | `/opt/projects/intra-trade` |
+| Variable | `COMPOSE_FILE` | `/home/ubuntu/stacks/intra-trade/docker-compose.prod.yml` |
+| Variable | `ENV_FILE` | `/home/ubuntu/stacks/intra-trade/.env.production` |
+
+### 4) Deploy
+
+Push to `master` or `main` — GitHub Actions handles the rest.
+
+```bash
+git push origin master
+```
+
+Traefik routes on `intra-trade.duckdns.org`:
+- `/api/*`, `/health` → Node API (:8001)
+- `/socket.io/*` → Socket.IO (:4001)
+- everything else → React SPA (:80)

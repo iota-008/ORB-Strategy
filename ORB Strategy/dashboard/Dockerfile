@@ -1,0 +1,29 @@
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci
+
+COPY . .
+
+ARG REACT_APP_API_BASE_URL
+ARG REACT_APP_SOCKET_URL
+ARG REACT_APP_KITE_API_KEY
+ARG REACT_APP_DEFAULT_WATCHLIST=NIFTY50
+
+ENV REACT_APP_API_BASE_URL=$REACT_APP_API_BASE_URL
+ENV REACT_APP_SOCKET_URL=$REACT_APP_SOCKET_URL
+ENV REACT_APP_KITE_API_KEY=$REACT_APP_KITE_API_KEY
+ENV REACT_APP_DEFAULT_WATCHLIST=$REACT_APP_DEFAULT_WATCHLIST
+
+RUN npm run build
+
+FROM nginx:1.27-alpine
+
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=builder /app/build /usr/share/nginx/html
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]

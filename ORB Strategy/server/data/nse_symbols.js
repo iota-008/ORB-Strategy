@@ -1,0 +1,105 @@
+// @ts-nocheck
+/**
+ * NSE stock symbol lists by index tier.
+ *
+ * Symbols must be bare trading symbols (no "NSE:" prefix).
+ * They are resolved to instrument tokens at runtime via kite.getLTP().
+ *
+ * To update: Visit https://www.nseindia.com/products-services/indices-nifty500-index
+ * and download the constituent CSV.
+ *
+ * NOTE: KiteTicker subscription limits apply per your Kite plan:
+ *   - Trial     : 3 instruments
+ *   - Basic     : 150 instruments
+ *   - Premium+  : 3000 instruments
+ * Set WATCHLIST_SIZE env var to control the load: "NIFTY50" | "NIFTY100" | "NIFTY500"
+ */
+
+const NIFTY_50 = [
+	"ADANIENT", "ADANIPORTS", "APOLLOHOSP", "ASIANPAINT", "AXISBANK",
+	"BAJAJ-AUTO", "BAJAJFINSV", "BAJFINANCE", "BHARTIARTL", "BPCL",
+	"BRITANNIA", "CIPLA", "COALINDIA", "DIVISLAB", "DRREDDY",
+	"EICHERMOT", "GRASIM", "HCLTECH", "HDFCBANK", "HDFCLIFE",
+	"HEROMOTOCO", "HINDALCO", "HINDUNILVR", "ICICIBANK", "INDUSINDBK",
+	"INFY", "ITC", "JSWSTEEL", "KOTAKBANK", "LT",
+	"LTIM", "M&M", "MARUTI", "NESTLEIND", "NTPC",
+	"ONGC", "POWERGRID", "RELIANCE", "SBICARD", "SBIN",
+	"SHREECEM", "SUNPHARMA", "TATAMOTORS", "TATASTEEL", "TCS",
+	"TATACONSUM", "TECHM", "TITAN", "ULTRACEMCO", "WIPRO",
+];
+
+// Nifty 50 + Nifty Next 50 = Nifty 100
+const NIFTY_NEXT_50 = [
+	"AMBUJACEM", "AUROPHARMA", "BAJAJHLDNG", "BANKBARODA", "BEL",
+	"BERGEPAINT", "BOSCHLTD", "CANBK", "CHOLAFIN", "COLPAL",
+	"DABUR", "DLF", "GAIL", "GODREJCP", "HAVELLS",
+	"ICICIPRULI", "ICICIGI", "IDFCFIRSTB", "IOC", "IRCTC",
+	"JSWENERGY", "LICI", "LUPIN", "MARICO", "MCDOWELL-N",
+	"MOTHERSON", "MUTHOOTFIN", "NAUKRI", "PFC", "PIDILITIND",
+	"PNB", "RECLTD", "SAIL", "SBILIFE", "SIEMENS",
+	"SRF", "TATAPOWER", "TORNTPHARM", "TRENT", "TVSMOTOR",
+	"UBL", "VBL", "VEDL", "VOLTAS", "ZYDUSLIFE",
+	"ABB", "NHPC", "ZOMATO", "ADANIGREEN", "DMART",
+];
+
+// Additional Nifty Midcap 150 and Nifty Smallcap 250 stocks to form ~500 total
+// Update this list quarterly from NSE website
+const NIFTY_MIDCAP_SMALLCAP = [
+	"ALKEM", "APOLLOTYRE", "APLAPOLLO", "ASTRAL", "AUBANK",
+	"BANDHANBNK", "CANFINHOME", "CDSL", "CGPOWER", "CONCOR",
+	"CUMMINSIND", "DELTACORP", "DIXON", "ESCORTS", "EXIDEIND",
+	"FEDERALBNK", "FORTIS", "GLENMARK", "GODREJPROP", "GRANULES",
+	"HAL", "HINDPETRO", "HONAUT", "IGL", "INDHOTEL",
+	"INDUSTOWER", "INTELLECT", "IRFC", "ISEC", "JKCEMENT",
+	"JKTYRE", "JUBLFOOD", "KALYANKJIL", "KPITTECH", "LAURUSLABS",
+	"LICHSGFIN", "LINDEINDIA", "LODHA", "MANAPPURAM", "MAXHEALTH",
+	"MCX", "MFSL", "MPHASIS", "MRF", "NIACL",
+	"OBEROIRLTY", "OFSS", "OLECTRA", "PAGEIND", "PIIND",
+	"POLYCAB", "PRESTIGE", "RADICO", "RAYMOND", "RKFORGE",
+	"SCHAEFFLER", "SONACOMS", "SUNTV", "SUPREMEIND", "SYNGENE",
+	"THERMAX", "TIMKEN", "TIINDIA", "UNIONBANK", "UNITDSPR",
+    
+	"VINATIORGA", "WELSPUNLIV", "ZEEL", "DEEPAKNTR", "EMAMILTD",
+	"GNFC", "HFCL", "IDFCo", "IBREALEST", "JSWHL",
+	"JUBLPHARMA", "KEC", "KFINTECH", "KIRLOSENG", "KRBL",
+	"LINDEINDIA", "MMFINANCE", "NMDC", "NSLNISP", "OFSS",
+	"ORIENTELEC", "PGHH", "RITES", "SAFARI", "SHRIRAMFIN",
+	"SUZLON", "TTKPRESTIG", "TORNTPOWER", "UCOBANK", "WIPRO",
+	"ANGELONE", "BSE", "CAMS", "CDSL", "CROMPTON",
+	"CYIENT", "DALBHARAT", "GILLETTE", "GRINDWELL", "GUJGASLTD",
+	"HOMEFIRST", "IIFL", "INDIAMART", "JBCHEPHARM", "JMFINANCIL",
+	"JUBLINDFRA", "MCX", "NAUKRI", "POLICYBZR", "QUESS",
+	"STARHEALTH", "VAIBHAVGBL", "ZOMATO", "CLEAN", "CRISIL",
+	"EPL", "EQUITASBNK", "FINEORG", "FLUOROCHEM", "GALAXY",
+	"GARFIBRES", "GHCL", "GICRE", "GOCOLORS", "GREENPLY",
+	"GREAVESCOT", "HBLPOWER", "HINDCOPPER", "INGERRAND", "IOB",
+	"IPCALAB", "JTLIND", "JUBILANT", "KANSAINER", "KENNAMET",
+	"LATENTVIEW", "LAXMIMACH", "MASFIN", "METROPOLIS", "MTAR",
+	"NILKAMAL", "PNCINFRA", "PRINCEPIPE", "RAGHYINDUS", "RAMCOCEM",
+	"ROUTEMOBILE", "SHARDACROP", "SJVN", "SKIPPER", "SMLISUZU",
+	"TEJASNET", "TORNTPHARM", "TRIL", "VGUARD", "VIJAYABANK",
+	"WELSPUNIND", "WHIRLPOOL", "ZFCVINDIA", "BALRAMCHIN", "CHAMBLFERT",
+	"CHEMCON", "DHANUKA", "EIDPARRY", "UFLEX", "YASHODATM",
+];
+
+const NIFTY_100 = [...NIFTY_50, ...NIFTY_NEXT_50];
+const NIFTY_500 = [...NIFTY_50, ...NIFTY_NEXT_50, ...NIFTY_MIDCAP_SMALLCAP];
+
+/**
+ * Returns the symbol list for a given watchlist size identifier.
+ * @param {"NIFTY50"|"NIFTY100"|"NIFTY500"} size
+ * @returns {string[]}
+ */
+function getSymbolList(size) {
+	switch ((size || "NIFTY50").toUpperCase()) {
+		case "NIFTY500":
+			return NIFTY_500;
+		case "NIFTY100":
+			return NIFTY_100;
+		case "NIFTY50":
+		default:
+			return NIFTY_50;
+	}
+}
+
+module.exports = { NIFTY_50, NIFTY_100, NIFTY_500, getSymbolList };
