@@ -69,9 +69,10 @@ function Start({ onStreamStarted }) {
 					Pragma: "no-cache",
 				},
 			});
-			const loginUrl = res.data?.loginUrl;
+			const payload = res?.data;
+			const loginUrl = (payload && typeof payload === "object") ? payload.loginUrl : null;
 			if (!loginUrl) {
-				throw new Error("Missing login URL from server");
+				throw new Error("Invalid /api/login/url response. API may be routed to frontend instead of backend.");
 			}
 			setNotice("Redirecting to Kite login...");
 			window.location.assign(loginUrl);
