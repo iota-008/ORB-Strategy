@@ -79,7 +79,12 @@ function App() {
 				},
 			});
 
-			const isOpenFromApi = Boolean(response.data?.open);
+			const payload = response?.data;
+			if (!payload || typeof payload !== "object" || !Object.prototype.hasOwnProperty.call(payload, "open")) {
+				throw new Error("Invalid market status payload");
+			}
+
+			const isOpenFromApi = Boolean(payload?.open);
 			if (!isOpenFromApi) {
 				setMarketStatus(true);
 				setLoadClient(false);
