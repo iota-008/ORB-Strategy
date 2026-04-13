@@ -44,6 +44,8 @@ function Start({ onStreamStarted }) {
 			.catch(() => {
 				// Fallback list so UI never breaks
 				setAlgos([
+					{ name: "CONSERVATIVE", label: "Conservative Intraday"      },
+					{ name: "CONSENSUS", label: "Consensus (3+ Algos)"       },
 					{ name: "ORB",      label: "Opening Range Breakout"   },
 					{ name: "VWAP",     label: "VWAP Crossover"           },
 					{ name: "MOMENTUM", label: "Momentum (% from Open)"   },

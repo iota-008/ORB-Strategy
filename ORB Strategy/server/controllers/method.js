@@ -298,7 +298,9 @@ function buildBroadcastPayload() {
 	// Buy signals first, then Sell, then alphabetical within each group
 	signals.sort((a, b) => {
 		const ORDER = { Buy: 0, Sell: 1 };
-		const diff  = (ORDER[a.status] ?? 2) - (ORDER[b.status] ?? 2);
+		const leftAction = a.status || a.signal || a.consensus;
+		const rightAction = b.status || b.signal || b.consensus;
+		const diff  = (ORDER[leftAction] ?? 2) - (ORDER[rightAction] ?? 2);
 		return diff !== 0 ? diff : a.name.localeCompare(b.name);
 	});
 

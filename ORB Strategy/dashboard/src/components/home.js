@@ -27,6 +27,7 @@ const ESTIMATOR_RR = Number(process.env.REACT_APP_ESTIMATOR_RR || 2);
 
 function getActionSignal(stock) {
 	if (stock?.status === "Buy" || stock?.status === "Sell") return stock.status;
+	if (stock?.signal === "Buy" || stock?.signal === "Sell") return stock.signal;
 	if (stock?.consensus === "Buy" || stock?.consensus === "Sell") return stock.consensus;
 	return null;
 }
@@ -56,6 +57,39 @@ function getEstimatedTarget(stock, status) {
 	return null;
 }
 
+function getSignalMetrics(stock, investmentAmount) {
+	const status = getActionSignal(stock);
+	const entry = Number(stock?.lastTradePrice);
+	const target = getEstimatedTarget(stock, status);
+	const changePct = Number(stock?.changePct);
+	const diffPct = Number(stock?.diffPct);
+
+	let estimatedReturnPct = null;
+	if ((status === "Buy" || status === "Sell") && Number.isFinite(entry) && entry > 0 && Number.isFinite(target)) {
+		estimatedReturnPct = status === "Buy" ? ((target - entry) / entry) * 100 : ((entry - target) / entry) * 100;
+	}
+
+	const estimatedProfit = Number.isFinite(estimatedReturnPct)
+		? investmentAmount * (estimatedReturnPct / 100)
+		: null;
+
+	return {
+		status,
+		entry,
+		target,
+		changePct: Number.isFinite(changePct) ? changePct : null,
+		diffPct: Number.isFinite(diffPct) ? diffPct : null,
+		estimatedReturnPct,
+		estimatedProfit,
+	};
+}
+
+function compareDescending(a, b) {
+	const left = Number.isFinite(a) ? a : -Infinity;
+	const right = Number.isFinite(b) ? b : -Infinity;
+	return right - left;
+}
+
 function Home({ setLoadClient }) {
 	// payload: { algo, algoLabel, signals, total, matched, updatedAt }
 	const [payload, setPayload]       = useState(null);
@@ -64,6 +98,7 @@ function Home({ setLoadClient }) {
 	const [nowMs, setNowMs] = useState(Date.now());
 	const [investmentAmount, setInvestmentAmount] = useState("10000");
 	const [selectedStockName, setSelectedStockName] = useState("__ALL__");
+	const [sortBy, setSortBy] = useState("estimatedProfitDesc");
 
 	useEffect(() => {
 		const socket = socketIOClient(ENDPOINT);
@@ -125,6 +160,27 @@ function Home({ setLoadClient }) {
 			? actionableSignals
 			: actionableSignals.filter((stock) => stock?.name === selectedStockName);
 
+	const sortedSignals = [...signals].sort((leftStock, rightStock) => {
+		const left = getSignalMetrics(leftStock, parsedInvestment);
+		const right = getSignalMetrics(rightStock, parsedInvestment);
+
+		switch (sortBy) {
+			case "estimatedProfitDesc":
+				return compareDescending(left.estimatedProfit, right.estimatedProfit) || leftStock.name.localeCompare(rightStock.name);
+			case "estimatedReturnDesc":
+				return compareDescending(left.estimatedReturnPct, right.estimatedReturnPct) || leftStock.name.localeCompare(rightStock.name);
+			case "changeDesc":
+				return compareDescending(left.changePct, right.changePct) || leftStock.name.localeCompare(rightStock.name);
+			case "changeAsc":
+				return compareDescending(right.changePct, left.changePct) || leftStock.name.localeCompare(rightStock.name);
+			case "diffDesc":
+				return compareDescending(left.diffPct, right.diffPct) || leftStock.name.localeCompare(rightStock.name);
+			case "nameAsc":
+			default:
+				return leftStock.name.localeCompare(rightStock.name);
+		}
+	});
+
 	const perSignalCapital = selectedSignals.length > 0 ? parsedInvestment / selectedSignals.length : 0;
 	const projectedProfit = selectedSignals.reduce((sum, stock) => {
 		const status = getActionSignal(stock);
@@ -166,7 +222,7 @@ function Home({ setLoadClient }) {
 								variant='outlined'
 								sx={{ p: 2.5, borderRadius: 3, backgroundColor: "background.paper" }}
 							>
-								<Stack direction={{ xs: "column", sm: "row" }} spacing={1} justifyContent='space-between'>
+								<Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} justifyContent='space-between'>
 									<Box>
 										<Typography variant='h6' fontWeight={700}>
 											{algoLabel || "Select an algorithm"}
@@ -175,7 +231,23 @@ function Home({ setLoadClient }) {
 											Realtime market signals dashboard
 										</Typography>
 									</Box>
-									<Stack direction='row' spacing={1} sx={{ alignSelf: "center" }} alignItems='center'>
+									<Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ alignSelf: "center" }} alignItems='center'>
+										<FormControl size='small' sx={{ minWidth: 220 }}>
+											<InputLabel id='sort-by-label'>Sort By</InputLabel>
+											<Select
+												labelId='sort-by-label'
+												label='Sort By'
+												value={sortBy}
+												onChange={(e) => setSortBy(e.target.value)}
+											>
+												<MenuItem value='estimatedProfitDesc'>Max Estimated Profit (₹)</MenuItem>
+												<MenuItem value='estimatedReturnDesc'>Max Estimated Return (%)</MenuItem>
+												<MenuItem value='changeDesc'>Max Change %</MenuItem>
+												<MenuItem value='changeAsc'>Min Change %</MenuItem>
+												<MenuItem value='diffDesc'>Max VWAP Diff %</MenuItem>
+												<MenuItem value='nameAsc'>Alphabetical</MenuItem>
+											</Select>
+										</FormControl>
 										<Chip size='small' label={streamStatusLabel} color={streamStatusColor} variant='outlined' />
 										<Typography variant='body2' color='text.secondary'>
 											{matched} signal{matched !== 1 ? "s" : ""} from {total} stocks
@@ -236,12 +308,15 @@ function Home({ setLoadClient }) {
 									<Typography variant='caption' color='text.secondary'>
 										Estimate uses algo target when available, otherwise derives target from stoploss with {ESTIMATOR_RR}:1 RR. Equal split applies only when multiple signals are selected.
 									</Typography>
+									<Typography variant='caption' color='text.secondary'>
+										Sort by estimated profit/return uses your full entered investment amount per stock for ranking.
+									</Typography>
 								</Stack>
 							</Paper>
 
 							{signals.length > 0 ? (
 								<Grid container spacing={2}>
-									{signals.map((stock) => (
+									{sortedSignals.map((stock) => (
 										<Grid item xs={12} sm={6} lg={4} key={stock.name}>
 											<Stocks stock={stock} />
 										</Grid>

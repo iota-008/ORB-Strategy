@@ -15,19 +15,21 @@
  */
 
 const THRESHOLD = Number(process.env.MOMENTUM_THRESHOLD_PCT || 0.5);
+const { DEFAULT_TARGET_RR, computeTarget } = require("./target");
 
 module.exports = {
 	name: "MOMENTUM",
 	label: "Momentum (% from Open)",
 	description:
 		`Signals BUY when price is ≥${THRESHOLD}% above day open, ` +
-		`SELL when ≥${THRESHOLD}% below. Stoploss at day open.`,
+		`SELL when ≥${THRESHOLD}% below. Stoploss at day open. Target uses ${DEFAULT_TARGET_RR}:1 reward:risk from stoploss.`,
 
 	extraFields: [
 		{ key: "lastTradePrice", label: "LTP"        },
 		{ key: "openPrice",      label: "Day Open"   },
 		{ key: "changePct",      label: "Change %"   },
 		{ key: "stoploss",       label: "Stoploss"   },
+			{ key: "target",         label: "Target"     },
 	],
 
 	initStockState: () => ({
@@ -36,6 +38,7 @@ module.exports = {
 		changePct: 0,
 		status: "Hold",
 		stoploss: 0,
+		target: 0,
 	}),
 
 	onTick(state, tick, _currentTime) {
@@ -50,12 +53,15 @@ module.exports = {
 			if (changePct >= THRESHOLD) {
 				s.status   = "Buy";
 				s.stoploss = openPrice;
+				s.target   = computeTarget(s.status, price, s.stoploss);
 			} else if (changePct <= -THRESHOLD) {
 				s.status   = "Sell";
 				s.stoploss = openPrice;
+				s.target   = computeTarget(s.status, price, s.stoploss);
 			} else {
 				s.status   = "Hold";
 				s.stoploss = 0;
+				s.target   = 0;
 			}
 		}
 

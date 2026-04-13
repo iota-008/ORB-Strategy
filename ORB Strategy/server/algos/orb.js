@@ -12,19 +12,21 @@
 
 const ORB_START_TIME = process.env.ORB_START_TIME || "09:15:00";
 const ORB_END_TIME   = process.env.ORB_END_TIME   || "09:30:00";
+const { DEFAULT_TARGET_RR, computeTarget } = require("./target");
 
 module.exports = {
 	name: "ORB",
 	label: "Opening Range Breakout",
 	description:
 		"Tracks the high/low during the first 15 min (09:15–09:30). " +
-		"Signals BUY on upward breakout, SELL on downward breakout.",
+		`Signals BUY on upward breakout, SELL on downward breakout. Target uses ${DEFAULT_TARGET_RR}:1 reward:risk from stoploss.`,
 
 	extraFields: [
 		{ key: "orbHigh",       label: "ORB High" },
 		{ key: "orbLow",        label: "ORB Low"  },
 		{ key: "lastTradePrice", label: "LTP"      },
 		{ key: "stoploss",      label: "Stoploss"  },
+			{ key: "target",        label: "Target"    },
 	],
 
 	/** Returns a fresh per-stock state object. */
@@ -34,6 +36,7 @@ module.exports = {
 		orbLow: null,
 		status: "Hold",
 		stoploss: 0,
+		target: 0,
 	}),
 
 	/**
@@ -57,12 +60,15 @@ module.exports = {
 		if (s.orbHigh !== null && price > s.orbHigh) {
 			s.status   = "Buy";
 			s.stoploss = s.orbLow ?? 0;
+			s.target   = computeTarget(s.status, price, s.stoploss);
 		} else if (s.orbLow !== null && price < s.orbLow) {
 			s.status   = "Sell";
 			s.stoploss = s.orbHigh ?? 0;
+			s.target   = computeTarget(s.status, price, s.stoploss);
 		} else {
 			s.status   = "Hold";
 			s.stoploss = 0;
+			s.target   = 0;
 		}
 
 		return s;

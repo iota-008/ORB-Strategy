@@ -20,6 +20,7 @@
 
 const SHORT_PERIOD = Number(process.env.EMA_SHORT_PERIOD || 9);
 const LONG_PERIOD  = Number(process.env.EMA_LONG_PERIOD  || 21);
+const { DEFAULT_TARGET_RR, computeTarget } = require("./target");
 
 function calcEMA(price, prevEMA, period) {
 	const k = 2 / (period + 1);
@@ -31,13 +32,14 @@ module.exports = {
 	label: `EMA Crossover (${SHORT_PERIOD}/${LONG_PERIOD})`,
 	description:
 		`Signals BUY when the ${SHORT_PERIOD}-EMA crosses above the ${LONG_PERIOD}-EMA ` +
-		`and SELL on the reverse crossover. Stoploss tracks the ${LONG_PERIOD}-EMA.`,
+		`and SELL on the reverse crossover. Stoploss tracks the ${LONG_PERIOD}-EMA. Target uses ${DEFAULT_TARGET_RR}:1 reward:risk from stoploss.`,
 
 	extraFields: [
 		{ key: "lastTradePrice", label: "LTP"                               },
 		{ key: "shortEMA",       label: `EMA ${SHORT_PERIOD}`               },
 		{ key: "longEMA",        label: `EMA ${LONG_PERIOD}`                },
 		{ key: "stoploss",       label: `Stoploss (EMA ${LONG_PERIOD})`     },
+			{ key: "target",         label: "Target"                          },
 	],
 
 	initStockState: () => ({
@@ -49,6 +51,7 @@ module.exports = {
 		tickCount: 0,
 		status: "Hold",
 		stoploss: 0,
+		target: 0,
 	}),
 
 	onTick(state, tick, _currentTime) {
@@ -85,6 +88,9 @@ module.exports = {
 		// Stoploss tracks long EMA dynamically
 		s.stoploss = (s.status !== "Hold" && s.longEMA !== null)
 			? s.longEMA
+			: 0;
+		s.target = s.status !== "Hold"
+			? computeTarget(s.status, price, s.stoploss)
 			: 0;
 
 		return s;

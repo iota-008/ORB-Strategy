@@ -49,6 +49,8 @@ function Stocks({ stock }) {
 	const resolvedStatus =
 		stock.status === "Buy" || stock.status === "Sell"
 			? stock.status
+			: stock.signal === "Buy" || stock.signal === "Sell"
+			? stock.signal
 			: stock.consensus === "Buy" || stock.consensus === "Sell"
 			? stock.consensus
 			: stock.status;
