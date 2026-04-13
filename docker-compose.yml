@@ -18,13 +18,13 @@ services:
       - web
     labels:
       - traefik.enable=true
-      - "traefik.http.routers.intratrade.rule=Host(`${APP_DOMAIN}`) && !PathPrefix(`/api`) && !PathPrefix(`/socket.io`) && !Path(`/health`)"
+      - "traefik.http.routers.intratrade.rule=Host(`${APP_DOMAIN}`)"
       - "traefik.http.routers.intratrade.entrypoints=websecure"
       - "traefik.http.routers.intratrade.tls.certresolver=letsencrypt"
       - "traefik.http.routers.intratrade.priority=1"
       - "traefik.http.services.intratrade.loadbalancer.server.port=80"
       - "traefik.http.middlewares.intratrade-https-redirect.redirectscheme.scheme=https"
-      - "traefik.http.routers.intratrade-http.rule=Host(`${APP_DOMAIN}`) && !PathPrefix(`/api`) && !PathPrefix(`/socket.io`) && !Path(`/health`)"
+      - "traefik.http.routers.intratrade-http.rule=Host(`${APP_DOMAIN}`)"
       - "traefik.http.routers.intratrade-http.entrypoints=web"
       - "traefik.http.routers.intratrade-http.middlewares=intratrade-https-redirect"
       - "traefik.http.routers.intratrade-http.priority=1"
