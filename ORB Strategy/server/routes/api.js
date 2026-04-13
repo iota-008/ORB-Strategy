@@ -6,6 +6,7 @@ const router = express.Router();
 require("dotenv").config();
 
 // Auth
+router.get("/login/url", Method.kiteLoginUrl);
 router.post("/login", Method.login);
 
 // Stream lifecycle

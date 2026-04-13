@@ -13,7 +13,7 @@ import {
 
 // Fields that exist for internal algo bookkeeping and should not be displayed
 const HIDDEN_FIELDS = new Set([
-	"name", "status", "prevShortEMA", "prevLongEMA", "tickCount",
+	"name", "status", "prevShortEMA", "prevLongEMA", "tickCount", "algoStates",
 ]);
 
 // Human-readable labels for known field keys
@@ -31,6 +31,7 @@ const FIELD_LABELS = {
 	consensus:      "Consensus",
 	confidence:     "Confidence",
 	algoVotes:      "Algorithm Votes",
+	target:         "Target",
 };
 
 function formatValue(key, value) {
@@ -45,14 +46,25 @@ function formatValue(key, value) {
 function Stocks({ stock }) {
 	if (!stock) return null;
 
-	const isBuy  = stock.status === "Buy";
-	const isSell = stock.status === "Sell";
+	const resolvedStatus =
+		stock.status === "Buy" || stock.status === "Sell"
+			? stock.status
+			: stock.consensus === "Buy" || stock.consensus === "Sell"
+			? stock.consensus
+			: stock.status;
+
+	const isBuy  = resolvedStatus === "Buy";
+	const isSell = resolvedStatus === "Sell";
 
 	const statusColor = isBuy ? "success" : isSell ? "error" : "default";
 
 	// Collect display fields: everything that isn't hidden and has a value
 	const displayFields = Object.keys(stock).filter(
-		(k) => !HIDDEN_FIELDS.has(k) && stock[k] !== null && stock[k] !== undefined
+		(k) =>
+			!HIDDEN_FIELDS.has(k) &&
+			stock[k] !== null &&
+			stock[k] !== undefined &&
+			typeof stock[k] !== "object"
 	);
 
 	return (
@@ -70,7 +82,7 @@ function Stocks({ stock }) {
 					<Typography variant='h6' fontWeight={700} noWrap>
 						{stock.name}
 					</Typography>
-					<Chip label={stock.status} color={statusColor} size='small' />
+					<Chip label={resolvedStatus} color={statusColor} size='small' />
 				</Stack>
 
 				<Divider sx={{ my: 1.5 }} />

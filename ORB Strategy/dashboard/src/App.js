@@ -3,6 +3,7 @@ import "./App.css";
 
 import React, { useCallback, useEffect, useState } from "react";
 import Home from "./components/home";
+import KiteCallback from "./components/KiteCallback";
 import MarketClosedPage from "./components/MarketClosedPage";
 import { Box, Button, CssBaseline, ThemeProvider, createTheme } from "@mui/material";
 import axios from "axios";
@@ -43,6 +44,8 @@ const theme = createTheme({
 function App() {
 	const [loadClient, setLoadClient] = useState(true);
 	const [marketClosed, setMarketStatus] = useState(false);
+	const searchParams = new URLSearchParams(window.location.search);
+	const isKiteCallback = Boolean(searchParams.get("request_token"));
 	const startTime = "09:15:00";
 	const closeTime = "15:30:00";
 
@@ -66,7 +69,14 @@ function App() {
 
 		try {
 			const response = await axios.get(`${API_BASE_URL}/api/market/status`, {
-				params: accessToken ? { accessToken } : {},
+				params: {
+					...(accessToken ? { accessToken } : {}),
+					_: Date.now(),
+				},
+				headers: {
+					"Cache-Control": "no-cache",
+					Pragma: "no-cache",
+				},
 			});
 
 			const isOpenFromApi = Boolean(response.data?.open);
@@ -109,6 +119,7 @@ function App() {
 	return (
 		<ThemeProvider theme={theme}>
 			<CssBaseline />
+			{isKiteCallback ? <KiteCallback apiBaseUrl={API_BASE_URL} /> : (
 			<Box sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
 				{loadClient && !marketClosed ? (
 					<Home setLoadClient={setLoadClient} />
@@ -123,6 +134,7 @@ function App() {
 					</Box>
 				) : null}
 			</Box>
+			)}
 		</ThemeProvider>
 	);
 }

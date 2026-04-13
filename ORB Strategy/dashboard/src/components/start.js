@@ -19,7 +19,6 @@ import {
 } from "@mui/material";
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "http://localhost:8001";
-const KITE_API_KEY = process.env.REACT_APP_KITE_API_KEY || "";
 
 const WATCHLIST_OPTIONS = [
 	{ value: "NIFTY50",  label: "Nifty 50  (50 stocks)"  },
@@ -58,15 +57,30 @@ function Start({ onStreamStarted }) {
 		}
 	}, []);
 
-	const handleKiteLogin = () => {
-		if (!KITE_API_KEY) {
-			setError("Missing REACT_APP_KITE_API_KEY. Configure it in frontend .env.");
-			return;
-		}
-		window.open(`https://kite.trade/connect/login?api_key=${KITE_API_KEY}&v=3`, "_blank");
+	const handleKiteLogin = async () => {
 		setError("");
-		setNotice("Kite login opened in a new tab. Paste the request token here once redirected.");
-		setStep("getToken");
+		setNotice("");
+		setLoading(true);
+
+		try {
+			const res = await axios.get(`${API_BASE_URL}/api/login/url`, {
+				headers: {
+					"Cache-Control": "no-cache",
+					Pragma: "no-cache",
+				},
+			});
+			const loginUrl = res.data?.loginUrl;
+			if (!loginUrl) {
+				throw new Error("Missing login URL from server");
+			}
+			setNotice("Redirecting to Kite login...");
+			window.location.assign(loginUrl);
+		} catch (err) {
+			const message = err?.response?.data?.error || err.message || "Unable to open Kite login";
+			setError(message);
+		} finally {
+			setLoading(false);
+		}
 	};
 
 	const handleSendToken = async () => {
@@ -155,10 +169,10 @@ function Start({ onStreamStarted }) {
 			{step === "login" && (
 				<Stack spacing={1.5}>
 					<Typography variant='body2' color='text.secondary'>
-						Connect your Kite account to generate session access token.
+						Connect your Kite account. After login, you will be returned automatically and the access token will be stored for you.
 					</Typography>
-					<Button variant='contained' onClick={handleKiteLogin}>
-						Login with Kite
+					<Button variant='contained' onClick={handleKiteLogin} disabled={loading}>
+						{loading ? "Opening Kite Login" : "Login with Kite"}
 					</Button>
 				</Stack>
 			)}
