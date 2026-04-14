@@ -4,6 +4,12 @@ A live intraday trading signal dashboard for NSE equities, powered by Zerodha Ki
 
 ---
 
+## Demo
+
+[intra-trade-demo2.webm](https://github.com/user-attachments/assets/02d0cbbf-9662-437b-9f18-e083f2048e0d)
+
+
+
 ## Architecture
 
 ```
